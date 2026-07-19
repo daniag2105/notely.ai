@@ -20,8 +20,8 @@ encrypted on your Mac (macOS Keychain) and only ever used to call Anthropic dire
 ## Install
 
 ```bash
-git clone https://github.com/daniag2105/notely.git
-cd notely
+git clone https://github.com/daniag2105/notely.ai.git
+cd notely.ai
 npm run setup
 ```
 
