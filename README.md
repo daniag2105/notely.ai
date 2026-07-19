@@ -28,6 +28,8 @@ npm run setup
 `npm run setup` installs everything and builds the app. When it finishes, open the `.dmg` it
 created in the `dist/` folder and drag **Notely.ai** into Applications.
 
+> **On Windows?** The steps are slightly different — see **[README-windows.md](README-windows.md)**.
+
 > First launch: because the app is unsigned (you built it yourself), macOS shows an "unidentified
 > developer" warning. Right-click the app ▸ **Open** once to get past it.
 
