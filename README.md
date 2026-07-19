@@ -19,16 +19,27 @@ encrypted on your Mac (macOS Keychain) and only ever used to call Anthropic dire
 
 ## Install
 
+> **On Windows?** Follow **[README-windows.md](README-windows.md)** instead.
+
+### Easiest — no commands
+1. Install **Node.js** (LTS) from [nodejs.org](https://nodejs.org) if you don't have it.
+2. On the [repo page](https://github.com/daniag2105/notely.ai), click the green **Code** button →
+   **Download ZIP**, then unzip it.
+3. Open the unzipped folder and **double-click `setup.command`**. It installs everything, builds
+   the app, and opens the installer for you — just wait for it to finish, then drag **Notely.ai**
+   into Applications.
+
+> First time you double-click `setup.command`, macOS may say it "can't be opened." Right-click it ▸
+> **Open** ▸ **Open** once, and it'll run.
+
+### With a terminal
 ```bash
 git clone https://github.com/daniag2105/notely.ai.git
 cd notely.ai
 npm run setup
 ```
-
-`npm run setup` installs everything and builds the app. When it finishes, open the `.dmg` it
-created in the `dist/` folder and drag **Notely.ai** into Applications.
-
-> **On Windows?** The steps are slightly different — see **[README-windows.md](README-windows.md)**.
+`npm run setup` installs everything and builds the app; then open the `.dmg` in the `dist/` folder
+and drag **Notely.ai** into Applications.
 
 > First launch: because the app is unsigned (you built it yourself), macOS shows an "unidentified
 > developer" warning. Right-click the app ▸ **Open** once to get past it.

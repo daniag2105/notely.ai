@@ -15,8 +15,9 @@ echo ""
 
 # 1. Node check ---------------------------------------------------------------
 if ! command -v node >/dev/null 2>&1; then
-  echo "  ✗ Node.js isn't installed."
-  echo "    Install the LTS version from https://nodejs.org, then run this again."
+  echo "  ✗ Node.js isn't installed — it's required to run Notely.ai."
+  echo "    Opening the download page… install the LTS version, then run this again."
+  command -v open >/dev/null 2>&1 && open "https://nodejs.org" || true
   echo ""
   exit 1
 fi

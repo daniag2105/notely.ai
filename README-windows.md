@@ -19,6 +19,24 @@ no bash or WSL needed.
   by Anthropic per usage; you control the spend)
 - **A Notion integration token** *(optional)* — only needed for "Send to Notion"
 
+## Easiest — no commands
+
+1. Install **Node.js** (LTS) from [nodejs.org](https://nodejs.org) if you don't have it.
+2. On the [repo page](https://github.com/daniag2105/notely.ai), click the green **Code** button →
+   **Download ZIP**, then unzip it.
+3. Open the unzipped folder and **double-click `setup.bat`**. It installs everything, builds the
+   app, and opens the `dist` folder with the installer — just wait for it to finish, then run the
+   installer (`notely-…-setup.exe`) inside.
+
+> Windows may show a blue **"Windows protected your PC"** box (for the script and again for the
+> installer, since the app isn't code-signed). Click **More info → Run anyway** — it's expected for
+> an app you built yourself.
+
+Then skip to [step 6 (add your keys)](#6-add-your-keys). Prefer to do it manually with a terminal?
+Use the steps below instead.
+
+---
+
 ## 1. Install Node.js
 
 Download the **LTS** installer from [nodejs.org](https://nodejs.org) and run it, clicking through
