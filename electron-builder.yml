@@ -1,5 +1,5 @@
 appId: com.sahil.notely
-productName: Notely
+productName: Notely.ai
 directories:
   buildResources: build
 files:
@@ -24,8 +24,8 @@ mac:
   identity: null
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
-    - NSDocumentsFolderUsageDescription: Notely reads lecture slide files you choose from Documents.
-    - NSDownloadsFolderUsageDescription: Notely saves generated .md notes to Downloads.
+    - NSDocumentsFolderUsageDescription: Notely.ai reads lecture slide files you choose from Documents.
+    - NSDownloadsFolderUsageDescription: Notely.ai saves generated .md notes to Downloads.
   notarize: false
 electronFuses:
   runAsNode: false

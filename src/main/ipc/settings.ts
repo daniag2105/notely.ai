@@ -18,4 +18,21 @@ export function registerSettingsIpc(): void {
   ipcMain.handle('settings:setUnits', (_e, units: string[]) => {
     store.setUnits(units)
   })
+
+  ipcMain.handle('settings:setAnthropicKey', (_e, key: string) => {
+    store.setAnthropicKey(key)
+    return { ok: true }
+  })
+
+  ipcMain.handle('settings:clearAnthropicKey', () => {
+    store.clearAnthropicKey()
+  })
+
+  ipcMain.handle('settings:setProvider', (_e, provider: store.Provider) => {
+    store.setProvider(provider)
+  })
+
+  ipcMain.handle('settings:setAnthropicModelId', (_e, modelId: string) => {
+    store.setAnthropicModelId(modelId)
+  })
 }

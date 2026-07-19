@@ -6,7 +6,8 @@ import {
   generateNotes,
   parseOutput,
   ContentBlock,
-  GenerateOptions
+  GenerateOptions,
+  GenerateConfig
 } from '../services/llm'
 
 interface GenerateRequest {
@@ -17,6 +18,14 @@ interface GenerateRequest {
   sourceBlocks: ContentBlock[]
 }
 
+function resolveGenerateConfig(): GenerateConfig {
+  const apiKey = store.getAnthropicKey()
+  if (!apiKey) {
+    throw new Error('No Anthropic API key set. Open Settings and add your key to generate notes.')
+  }
+  return { provider: 'anthropic', apiKey, modelId: store.getAnthropicModelId() }
+}
+
 export function registerNotesIpc(): void {
   ipcMain.handle('notes:generate', async (event: IpcMainInvokeEvent, payload: GenerateRequest) => {
     const { requestId, unit, topic, options, sourceBlocks } = payload
@@ -24,9 +33,10 @@ export function registerNotesIpc(): void {
       ...sourceBlocks,
       { type: 'text', text: buildInstruction(unit, topic, options) }
     ]
-    const modelId = store.getModelId()
-    const baseUrl = store.getOllamaBaseUrl()
-    const raw = await generateNotes(baseUrl, modelId, content, buildSystemPrompt(), (fullText) => {
+    // The decrypted key (if any) lives only in this function's local scope for the duration
+    // of the request — never logged, never sent back over IPC to the renderer.
+    const config = resolveGenerateConfig()
+    const raw = await generateNotes(config, content, buildSystemPrompt(), (fullText) => {
       event.sender.send('notes:generate:progress', { requestId, text: fullText })
     })
     return parseOutput(raw, topic)

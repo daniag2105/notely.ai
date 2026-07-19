@@ -5,6 +5,7 @@
   "main": "./out/main/index.js",
   "author": "Sahil",
   "scripts": {
+    "setup": "bash scripts/setup.sh",
     "format": "prettier --write .",
     "lint": "eslint --cache .",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",

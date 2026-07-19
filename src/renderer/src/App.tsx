@@ -12,24 +12,29 @@ import {
   AlertTriangle,
   Loader2,
   ClipboardList,
+  FolderOpen,
   Settings as SettingsIcon,
   ExternalLink,
   Send
 } from 'lucide-react'
 import { T } from './theme'
 import { mdToHtml } from './lib/mdToHtml'
+import { pdfToImages } from './lib/pdf'
+import { publishToNotion } from './lib/notionPublish'
 import SettingsModal from './components/SettingsModal'
 import NotionPagePicker, { PickerPage } from './components/NotionPagePicker'
-import * as pdfjsLib from 'pdfjs-dist'
-import pdfWorkerSrc from 'pdfjs-dist/build/pdf.worker.mjs?url'
+import BatchModal from './components/BatchModal'
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerSrc
+export type ContentBlock = { type: 'text'; text: string } | { type: 'image'; data: string; mediaType: string }
 
-type ContentBlock = { type: 'text'; text: string } | { type: 'image'; data: string }
+export type Depth = 'concise' | 'standard' | 'detailed'
 
-type Depth = 'concise' | 'standard' | 'detailed'
-
-const MAX_PDF_PAGES = 60
+export interface GenerateOptions {
+  depth: Depth
+  terms: boolean
+  summary: boolean
+  custom: string
+}
 
 const fileToBase64 = (file: File): Promise<string> =>
   new Promise((res, rej) => {
@@ -46,28 +51,6 @@ const readText = (file: File): Promise<string> =>
     r.onerror = () => rej(new Error('Could not read file'))
     r.readAsText(file)
   })
-
-async function pdfToImages(file: File): Promise<string[]> {
-  const buf = await file.arrayBuffer()
-  const pdf = await pdfjsLib.getDocument({ data: buf }).promise
-  const pageCount = Math.min(pdf.numPages, MAX_PDF_PAGES)
-  if (pdf.numPages > MAX_PDF_PAGES) {
-    console.warn(`PDF has ${pdf.numPages} pages — only the first ${MAX_PDF_PAGES} are sent.`)
-  }
-  const images: string[] = []
-  for (let i = 1; i <= pageCount; i++) {
-    const page = await pdf.getPage(i)
-    const viewport = page.getViewport({ scale: 1.5 })
-    const canvas = document.createElement('canvas')
-    canvas.width = viewport.width
-    canvas.height = viewport.height
-    const ctx = canvas.getContext('2d')
-    if (!ctx) throw new Error('Could not create canvas context to render PDF')
-    await page.render({ canvasContext: ctx, viewport }).promise
-    images.push(canvas.toDataURL('image/png').split(',')[1])
-  }
-  return images
-}
 
 function progressTail(full: string): string {
   const idx = full.indexOf('===NOTES===')
@@ -252,7 +235,7 @@ function SourceInput({
   )
 }
 
-interface PickerState {
+export interface PickerState {
   heading: string
   subheading?: string
   initialQuery: string
@@ -286,6 +269,20 @@ export default function App(): React.JSX.Element {
     if (unitsLoaded) window.api.settings.setUnits(units)
   }, [units, unitsLoaded])
 
+  // First-run onboarding: the Anthropic key is required to generate anything, so surface a
+  // one-time setup banner until it's set (rather than only erroring at generate-time). Assume set
+  // until we've actually checked, to avoid the banner flashing on every launch.
+  const [anthropicKeySet, setAnthropicKeySet] = useState(true)
+
+  const refreshSetup = async (): Promise<void> => {
+    const s = await window.api.settings.get()
+    setAnthropicKeySet(s.anthropicKeySet)
+  }
+
+  useEffect(() => {
+    refreshSetup()
+  }, [])
+
   const [slideMode, setSlideMode] = useState('upload')
   const [slideText, setSlideText] = useState('')
   const [slideFile, setSlideFile] = useState<File | null>(null)
@@ -307,6 +304,7 @@ export default function App(): React.JSX.Element {
   const [copied, setCopied] = useState('')
 
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [batchOpen, setBatchOpen] = useState(false)
   const [picker, setPicker] = useState<PickerState | null>(null)
   const [notionBusy, setNotionBusy] = useState(false)
   const [notionError, setNotionError] = useState('')
@@ -372,10 +370,10 @@ export default function App(): React.JSX.Element {
       if (slideMode === 'upload' && slideFile) {
         if (slideFile.type === 'application/pdf') {
           const images = await pdfToImages(slideFile)
-          for (const data of images) content.push({ type: 'image', data })
+          for (const data of images) content.push({ type: 'image', data, mediaType: 'image/png' })
         } else if (slideFile.type.startsWith('image/')) {
           const b64 = await fileToBase64(slideFile)
-          content.push({ type: 'image', data: b64 })
+          content.push({ type: 'image', data: b64, mediaType: slideFile.type })
         } else {
           const t = await readText(slideFile)
           content.push({ type: 'text', text: `LECTURE SLIDES:\n${t}` })
@@ -420,35 +418,7 @@ export default function App(): React.JSX.Element {
         throw new Error('Add a Notion integration token in Settings first.')
       }
 
-      let unitPage = await window.api.notion.resolveUnitPage(unit)
-      if (!unitPage) {
-        unitPage = await openPicker({
-          heading: `Find the Notion page for "${unit}"`,
-          subheading: 'Pick the top-level page for this unit. It must already be shared with your integration.',
-          initialQuery: unit,
-          fetchResults: (q) => window.api.notion.searchTopLevelPages(q)
-        })
-        await window.api.notion.mapUnitPage(unit, unitPage.id)
-      }
-      const resolvedUnitPage = unitPage
-
-      let topicPage = await window.api.notion.resolveTopicPage(resolvedUnitPage.id, unit, topic)
-      if (!topicPage) {
-        topicPage = await openPicker({
-          heading: `Find the "${topic}" toggle heading under ${unit}`,
-          subheading: 'Pick the existing topic toggle heading, or create a new one.',
-          initialQuery: topic,
-          fetchResults: () => window.api.notion.listChildPages(resolvedUnitPage.id),
-          createLabel: `Create "${topic}" toggle heading here`,
-          onCreateNew: async () => {
-            const p = await window.api.notion.createTopicPage(resolvedUnitPage.id, topic)
-            await window.api.notion.mapTopicPage(unit, topic, p.id)
-            return p
-          }
-        })
-      }
-
-      const result = await window.api.notion.createNotesPage(resolvedUnitPage.id, out.title, out.notes)
+      const result = await publishToNotion({ unit, topic, title: out.title, notes: out.notes }, openPicker)
       setNotionUrl(result.url)
     } catch (e) {
       setNotionError((e as Error).message)
@@ -464,6 +434,7 @@ export default function App(): React.JSX.Element {
         .l2n-grid { display: grid; grid-template-columns: minmax(0,420px) minmax(0,1fr); gap: 20px; }
         @media (max-width: 820px){ .l2n-grid { grid-template-columns: 1fr; } }
         input:focus, textarea:focus, select:focus { outline: none; border-color: ${T.blue} !important; }
+        .prev{ font-family: Georgia, 'Times New Roman', Times, serif; }
         .prev h1{ font-family: Georgia, serif; font-size: 22px; margin: 18px 0 8px; color:${T.text}; }
         .prev h2{ font-family: Georgia, serif; font-size: 18px; margin: 16px 0 6px; color:${T.text}; }
         .prev h3{ font-family: Georgia, serif; font-size: 15px; margin: 12px 0 4px; color:${T.dim}; }
@@ -502,7 +473,7 @@ export default function App(): React.JSX.Element {
                 <ClipboardList size={18} color={T.blue} />
               </div>
               <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 24, margin: 0, letterSpacing: '-.01em' }}>
-                Notely
+                Notely.ai
               </h1>
             </div>
             <p style={{ color: T.dim, fontSize: 13.5, margin: '8px 0 0', maxWidth: 640, lineHeight: 1.5 }}>
@@ -510,24 +481,80 @@ export default function App(): React.JSX.Element {
               straight to the right unit and topic.
             </p>
           </div>
-          <button
-            onClick={() => setSettingsOpen(true)}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => setBatchOpen(true)}
+              style={{
+                padding: '9px 12px',
+                borderRadius: 9,
+                border: `1px solid ${T.lineSoft}`,
+                background: T.panel,
+                color: T.dim,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 7,
+                fontSize: 12.5
+              }}
+            >
+              <FolderOpen size={15} /> Batch import
+            </button>
+            <button
+              onClick={() => setSettingsOpen(true)}
+              style={{
+                padding: '9px 12px',
+                borderRadius: 9,
+                border: `1px solid ${T.lineSoft}`,
+                background: T.panel,
+                color: T.dim,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 7,
+                fontSize: 12.5
+              }}
+            >
+              <SettingsIcon size={15} /> Settings
+            </button>
+          </div>
+        </div>
+
+        {!anthropicKeySet && (
+          <div
             style={{
-              padding: '9px 12px',
-              borderRadius: 9,
-              border: `1px solid ${T.lineSoft}`,
-              background: T.panel,
-              color: T.dim,
-              cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: 7,
-              fontSize: 12.5
+              gap: 12,
+              background: T.blueBg,
+              border: `1px solid ${T.blue}`,
+              borderRadius: 12,
+              padding: '13px 15px',
+              marginBottom: 18
             }}
           >
-            <SettingsIcon size={15} /> Settings
-          </button>
-        </div>
+            <AlertTriangle size={18} color={T.blue} style={{ flexShrink: 0 }} />
+            <div style={{ flex: 1, fontSize: 13, color: T.text, lineHeight: 1.5 }}>
+              <b>One-time setup:</b> add your Anthropic API key to start generating notes. Get one at{' '}
+              <b>console.anthropic.com</b> — it stays encrypted on this Mac.
+            </div>
+            <button
+              onClick={() => setSettingsOpen(true)}
+              style={{
+                padding: '9px 14px',
+                borderRadius: 9,
+                border: 'none',
+                background: T.blue,
+                color: '#fff',
+                cursor: 'pointer',
+                fontSize: 12.5,
+                fontWeight: 600,
+                flexShrink: 0
+              }}
+            >
+              Open Settings
+            </button>
+          </div>
+        )}
 
         <div className="l2n-grid">
           {/* ---------------- LEFT: inputs ---------------- */}
@@ -956,7 +983,23 @@ export default function App(): React.JSX.Element {
         </div>
       </div>
 
-      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsModal
+        open={settingsOpen}
+        onClose={() => {
+          setSettingsOpen(false)
+          refreshSetup()
+        }}
+      />
+
+      <BatchModal
+        open={batchOpen}
+        onClose={() => setBatchOpen(false)}
+        units={units}
+        unit={unit}
+        setUnit={setUnit}
+        options={{ depth, terms, summary, custom: customInstructions }}
+        openPicker={openPicker}
+      />
 
       <NotionPagePicker
         open={!!picker}

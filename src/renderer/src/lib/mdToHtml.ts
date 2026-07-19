@@ -90,18 +90,11 @@ export function mdToHtml(md: string): string {
       i++
       continue
     }
-    if (/^### /.test(l)) {
-      html += `<h3>${inline(l.slice(4))}</h3>`
-      i++
-      continue
-    }
-    if (/^## /.test(l)) {
-      html += `<h2>${inline(l.slice(3))}</h2>`
-      i++
-      continue
-    }
-    if (/^# /.test(l)) {
-      html += `<h1>${inline(l.slice(2))}</h1>`
+    const headingMatch = l.match(/^(#{1,})\s*(.*)$/)
+    if (headingMatch) {
+      const level = Math.min(headingMatch[1].length, 3)
+      const text = headingMatch[2].replace(/\s*#+\s*$/, '').trim()
+      html += `<h${level}>${inline(text)}</h${level}>`
       i++
       continue
     }

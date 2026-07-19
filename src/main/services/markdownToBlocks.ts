@@ -212,19 +212,17 @@ export function markdownToBlocks(markdown: string): NotionBlock[] {
       continue
     }
 
-    // headings
-    if (/^### /.test(line)) {
-      blocks.push(block('heading_3', { rich_text: inlineToRichText(line.slice(4)) }))
-      i++
-      continue
-    }
-    if (/^## /.test(line)) {
-      blocks.push(block('heading_2', { rich_text: inlineToRichText(line.slice(3)) }))
-      i++
-      continue
-    }
-    if (/^# /.test(line)) {
-      blocks.push(block('heading_1', { rich_text: inlineToRichText(line.slice(2)) }))
+    // headings — lenient: 1+ leading hashes (some models skip the space after the
+    // hashes, or nest deeper than Notion's 3 levels), clamped to heading_3, with any
+    // ATX-style trailing hashes stripped ("## Heading ##" -> "Heading"). A strict
+    // "exactly 1-3 hashes + one space" match used to let anything else (missing space,
+    // 4+ hashes) fall through as literal "####..." paragraph text.
+    const headingMatch = line.match(/^(#{1,})\s*(.*)$/)
+    if (headingMatch) {
+      const level = Math.min(headingMatch[1].length, 3)
+      const text = headingMatch[2].replace(/\s*#+\s*$/, '').trim()
+      const type = level === 1 ? 'heading_1' : level === 2 ? 'heading_2' : 'heading_3'
+      blocks.push(block(type, { rich_text: inlineToRichText(text) }))
       i++
       continue
     }

@@ -4,3 +4,10 @@ out
 .DS_Store
 .eslintcache
 *.log*
+
+# secrets — never commit; the app doesn't use .env at runtime (keys live encrypted in
+# ~/Library/Application Support/notely, entered via the in-app Settings UI), but this
+# stays defensive in case one's ever added for local scripting/dev convenience
+.env
+.env.*
+!.env.example

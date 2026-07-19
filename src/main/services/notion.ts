@@ -76,10 +76,29 @@ export async function searchPages(token: string, query: string): Promise<NotionP
       query,
       filter: { property: 'object', value: 'page' },
       sort: { direction: 'descending', timestamp: 'last_edited_time' },
-      page_size: 15
+      page_size: 50
     }
   })
-  return (data.results || []).map((p: any) => ({
+
+  // Notion's own search is fuzzy/relevance-based, not a substring match, and returns pages
+  // at any nesting depth (plus database rows) — which is why unrelated and deeply-nested
+  // pages were showing up for a short query like a unit code. Require the title to actually
+  // contain what was typed, drop database rows (never a valid "unit page" here), and rank
+  // true top-level pages first without hard-excluding nested ones (a hard exclude risks zero
+  // results if a workspace nests its pages, which is worse than a slightly noisy list).
+  const q = query.trim().toLowerCase()
+  const results: any[] = data.results || []
+  const candidates = results.filter(
+    (p) => p.parent?.type !== 'database_id' && p.parent?.type !== 'data_source_id'
+  )
+  const matched = q ? candidates.filter((p) => extractTitle(p).toLowerCase().includes(q)) : candidates
+  matched.sort((a, b) => {
+    const aTop = a.parent?.type === 'workspace' ? 0 : 1
+    const bTop = b.parent?.type === 'workspace' ? 0 : 1
+    return aTop - bTop
+  })
+
+  return matched.slice(0, 15).map((p) => ({
     id: p.id,
     title: extractTitle(p),
     icon: extractIcon(p)

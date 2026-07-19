@@ -1,4 +1,22 @@
-export type ContentBlock = { type: 'text'; text: string } | { type: 'image'; data: string }
+export type ContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'image'; data: string; mediaType: string }
+
+export type Provider = 'ollama' | 'anthropic'
+
+export interface OllamaGenerateConfig {
+  provider: 'ollama'
+  baseUrl: string
+  modelId: string
+}
+
+export interface AnthropicGenerateConfig {
+  provider: 'anthropic'
+  apiKey: string
+  modelId: string
+}
+
+export type GenerateConfig = OllamaGenerateConfig | AnthropicGenerateConfig
 
 export interface GenerateOptions {
   depth: 'concise' | 'standard' | 'detailed'
@@ -39,7 +57,7 @@ Be thorough but not padded. Prefer clarity over length. Write in the second pers
 
 RETURN EXACTLY this shape, nothing before or after:
 ===TITLE===
-<a concise page title for the Notion sub-page, e.g. "Topic 3 — Fluid Statics">
+<the title as it actually appears on the lecture slides themselves — copy it from the title/front slide (or the first slide's heading) verbatim or as close to verbatim as possible. Do NOT invent, paraphrase, or improve it — use what the slides actually say, not your own summary of the lecture>
 ===NOTES===
 <the full markdown notes>`
 }
@@ -57,11 +75,14 @@ Depth: ${depthMap[opts.depth]}
 ${opts.terms ? 'Include a Key terms list.' : 'You may skip a separate Key terms list.'}
 ${opts.summary ? 'Include a Summary / takeaways section at the end.' : ''}
 ${opts.custom.trim() ? `\nADDITIONAL INSTRUCTIONS FROM THE STUDENT — follow these, they take priority over the defaults above where they conflict:\n${opts.custom.trim()}\n` : ''}
-Make the page title reflect the unit's topic and lecture content. Then produce the notes.`
+The page title must be copied from the slides themselves (the title/front slide, or the first slide's heading) — not invented or rephrased. Then produce the notes.`
 }
 
 const NUM_CTX = 12288
 const NUM_PREDICT = 8000
+const MAX_TOKENS = 8000
+const CONTINUATION_PROMPT =
+  'Continue the notes from exactly where you stopped. Do not repeat anything already written, do not add any preamble — just carry straight on.'
 
 interface OllamaStreamLine {
   message?: { role: string; content: string }
@@ -128,7 +149,7 @@ async function streamChat(
   return { content, doneReason }
 }
 
-export async function generateNotes(
+async function generateNotesOllama(
   baseUrl: string,
   modelId: string,
   contentBlocks: ContentBlock[],
@@ -140,7 +161,7 @@ export async function generateNotes(
     .map((b) => b.text)
     .join('\n\n')
   const images = contentBlocks
-    .filter((b): b is { type: 'image'; data: string } => b.type === 'image')
+    .filter((b): b is { type: 'image'; data: string; mediaType: string } => b.type === 'image')
     .map((b) => b.data)
 
   const messages: Array<{
@@ -161,16 +182,94 @@ export async function generateNotes(
     onProgress(full)
     if (doneReason === 'length') {
       messages.push({ role: 'assistant', content: chunk })
-      messages.push({
-        role: 'user',
-        content:
-          'Continue the notes from exactly where you stopped. Do not repeat anything already written, do not add any preamble — just carry straight on.'
-      })
+      messages.push({ role: 'user', content: CONTINUATION_PROMPT })
     } else {
       break
     }
   }
   return full
+}
+
+type AnthropicContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
+
+function toAnthropicContent(blocks: ContentBlock[]): AnthropicContentBlock[] {
+  return blocks.map((b) =>
+    b.type === 'text'
+      ? { type: 'text', text: b.text }
+      : { type: 'image', source: { type: 'base64', media_type: b.mediaType, data: b.data } }
+  )
+}
+
+interface AnthropicResponse {
+  content?: Array<{ type: string; text?: string }>
+  stop_reason?: string
+  error?: { message?: string }
+}
+
+// Non-streaming, unlike the Ollama path — Anthropic's cloud latency is fast enough that this
+// never hits the headers-timeout issue that forced Ollama onto streaming, so there's no need
+// to force both providers through the same mechanics.
+async function generateNotesAnthropic(
+  apiKey: string,
+  modelId: string,
+  contentBlocks: ContentBlock[],
+  systemPrompt: string,
+  onProgress: (fullText: string) => void
+): Promise<string> {
+  const messages: Array<{ role: 'user' | 'assistant'; content: AnthropicContentBlock[] | string }> = [
+    { role: 'user', content: toAnthropicContent(contentBlocks) }
+  ]
+
+  let full = ''
+  for (let attempt = 0; attempt < 5; attempt++) {
+    let resp: Response
+    try {
+      resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({ model: modelId, max_tokens: MAX_TOKENS, system: systemPrompt, messages })
+      })
+    } catch (e) {
+      throw new Error(`Couldn't reach Anthropic's API (${(e as Error).message}). Check your internet connection.`)
+    }
+    if (!resp.ok) {
+      // Response body only — never echoes back request headers, so the API key can't leak here.
+      const data = (await resp.json().catch(() => ({}))) as AnthropicResponse
+      throw new Error(data.error?.message || `Anthropic API ${resp.status}`)
+    }
+    const data = (await resp.json()) as AnthropicResponse
+    const chunk = (data.content || [])
+      .filter((b) => b.type === 'text')
+      .map((b) => b.text || '')
+      .join('')
+    full += chunk
+    onProgress(full)
+    if (data.stop_reason === 'max_tokens') {
+      messages.push({ role: 'assistant', content: chunk })
+      messages.push({ role: 'user', content: CONTINUATION_PROMPT })
+    } else {
+      break
+    }
+  }
+  return full
+}
+
+export async function generateNotes(
+  config: GenerateConfig,
+  contentBlocks: ContentBlock[],
+  systemPrompt: string,
+  onProgress: (fullText: string) => void
+): Promise<string> {
+  if (config.provider === 'anthropic') {
+    return generateNotesAnthropic(config.apiKey, config.modelId, contentBlocks, systemPrompt, onProgress)
+  }
+  return generateNotesOllama(config.baseUrl, config.modelId, contentBlocks, systemPrompt, onProgress)
 }
 
 export function parseOutput(raw: string, topic: string): { title: string; notes: string } {
@@ -208,4 +307,38 @@ export async function checkOllamaConnection(
     }
   }
   return { ok: true }
+}
+
+// Anthropic has no free "ping" endpoint, so this spends a trivial 1 output token (a fraction
+// of a cent) on a real request to genuinely confirm the key + model combination works, rather
+// than just checking the key is present.
+export async function checkAnthropicKey(
+  apiKey: string,
+  modelId: string
+): Promise<{ ok: boolean; error?: string }> {
+  let resp: Response
+  try {
+    resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: modelId,
+        max_tokens: 1,
+        messages: [{ role: 'user', content: 'hi' }]
+      })
+    })
+  } catch (e) {
+    return {
+      ok: false,
+      error: `Couldn't reach Anthropic's API (${(e as Error).message}). Check your internet connection.`
+    }
+  }
+  if (resp.ok) return { ok: true }
+  if (resp.status === 401) return { ok: false, error: 'Invalid API key.' }
+  const data = (await resp.json().catch(() => ({}))) as AnthropicResponse
+  return { ok: false, error: data.error?.message || `Anthropic API ${resp.status}` }
 }

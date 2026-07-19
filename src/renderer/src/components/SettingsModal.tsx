@@ -7,6 +7,12 @@ interface Props {
   onClose: () => void
 }
 
+const ANTHROPIC_MODELS = [
+  { id: 'claude-haiku-4-5-20251001', label: 'Haiku' },
+  { id: 'claude-sonnet-5', label: 'Sonnet' },
+  { id: 'claude-opus-4-8', label: 'Opus' }
+]
+
 function SecretField({
   label,
   placeholder,
@@ -52,6 +58,8 @@ function SecretField({
           value={value}
           onChange={(e) => setValue(e.target.value)}
           placeholder={isSet ? '•••••••••••••••• (paste to replace)' : placeholder}
+          autoComplete="off"
+          spellCheck={false}
           style={{
             flex: 1,
             padding: '9px 11px',
@@ -116,8 +124,8 @@ function SecretField({
 
 export default function SettingsModal({ open, onClose }: Props): React.JSX.Element | null {
   const [notionTokenSet, setNotionTokenSet] = useState(false)
-  const [modelId, setModelId] = useState('')
-  const [ollamaBaseUrl, setOllamaBaseUrl] = useState('')
+  const [anthropicModelId, setAnthropicModelId] = useState('')
+  const [anthropicKeySet, setAnthropicKeySet] = useState(false)
   const [testResult, setTestResult] = useState<{ ok: boolean; error?: string } | null>(null)
   const [testing, setTesting] = useState(false)
   const [llmResult, setLlmResult] = useState<{ ok: boolean; error?: string } | null>(null)
@@ -126,8 +134,8 @@ export default function SettingsModal({ open, onClose }: Props): React.JSX.Eleme
   const refresh = async (): Promise<void> => {
     const s = await window.api.settings.get()
     setNotionTokenSet(s.notionTokenSet)
-    setModelId(s.modelId)
-    setOllamaBaseUrl(s.ollamaBaseUrl)
+    setAnthropicModelId(s.anthropicModelId)
+    setAnthropicKeySet(s.anthropicKeySet)
   }
 
   useEffect(() => {
@@ -137,6 +145,11 @@ export default function SettingsModal({ open, onClose }: Props): React.JSX.Eleme
       setLlmResult(null)
     }
   }, [open])
+
+  const switchAnthropicModel = async (modelId: string): Promise<void> => {
+    setAnthropicModelId(modelId)
+    await window.api.settings.setAnthropicModelId(modelId)
+  }
 
   if (!open) return null
 
@@ -179,29 +192,57 @@ export default function SettingsModal({ open, onClose }: Props): React.JSX.Eleme
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
               <Cpu size={15} color={T.blue} />
-              <label style={{ fontSize: 13, fontWeight: 600, color: T.text }}>Local model</label>
+              <label style={{ fontSize: 13, fontWeight: 600, color: T.text }}>Generation (Claude)</label>
             </div>
+
             <div
               style={{
-                padding: '9px 11px',
-                borderRadius: 8,
-                background: T.panelHi,
-                border: `1px solid ${T.lineSoft}`,
-                fontSize: 12,
-                fontFamily: 'ui-monospace, Menlo, monospace',
-                color: T.text,
                 display: 'flex',
-                flexDirection: 'column',
-                gap: 3
+                gap: 5,
+                background: T.panelHi,
+                padding: 3,
+                borderRadius: 9,
+                border: `1px solid ${T.lineSoft}`,
+                marginBottom: 12
               }}
             >
-              <span>
-                model: <b>{modelId || '…'}</b>
-              </span>
-              <span style={{ color: T.dim }}>{ollamaBaseUrl || '…'}</span>
+              {ANTHROPIC_MODELS.map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => switchAnthropicModel(m.id)}
+                  style={{
+                    flex: 1,
+                    padding: '6px',
+                    borderRadius: 6,
+                    fontSize: 12,
+                    cursor: 'pointer',
+                    border: 'none',
+                    fontWeight: 600,
+                    background: anthropicModelId === m.id ? T.blue : 'transparent',
+                    color: anthropicModelId === m.id ? '#fff' : T.dim
+                  }}
+                >
+                  {m.label}
+                </button>
+              ))}
             </div>
+            <SecretField
+              label="Anthropic API key"
+              placeholder="sk-ant-…"
+              isSet={anthropicKeySet}
+              onSave={async (v) => {
+                await window.api.settings.setAnthropicKey(v)
+                refresh()
+              }}
+              onClear={async () => {
+                await window.api.settings.clearAnthropicKey()
+                refresh()
+              }}
+              hint={`Required — Notely.ai uses Claude to write your notes. Create a key at console.anthropic.com (billed by Anthropic per their usage pricing). Stored encrypted locally via macOS Keychain, the same way your Notion token is — it only ever leaves this app to call Anthropic's API directly over HTTPS.`}
+            />
+
             <div style={{ marginTop: 8 }}>
               <button
                 disabled={llmTesting}
@@ -243,17 +284,15 @@ export default function SettingsModal({ open, onClose }: Props): React.JSX.Eleme
                     lineHeight: 1.5
                   }}
                 >
-                  {llmResult.ok ? <Check size={13} style={{ marginTop: 1, flexShrink: 0 }} /> : <AlertTriangle size={13} style={{ marginTop: 1, flexShrink: 0 }} />}
+                  {llmResult.ok ? (
+                    <Check size={13} style={{ marginTop: 1, flexShrink: 0 }} />
+                  ) : (
+                    <AlertTriangle size={13} style={{ marginTop: 1, flexShrink: 0 }} />
+                  )}
                   {llmResult.ok ? 'Connected' : llmResult.error}
                 </div>
               )}
             </div>
-            <p style={{ fontSize: 11, color: T.faint, marginTop: 8, lineHeight: 1.5 }}>
-              Notely runs entirely offline via <b style={{ color: T.dim }}>Ollama</b> — no API key needed.
-              One-time setup in Terminal: <b style={{ color: T.dim }}>brew install ollama</b>, then{' '}
-              <b style={{ color: T.dim }}>ollama pull {modelId || 'minicpm-v4.5'}</b> (~6GB). Make sure
-              Ollama is running (<b style={{ color: T.dim }}>ollama serve</b>) before generating notes.
-            </p>
           </div>
 
           <div style={{ height: 1, background: T.lineSoft }} />
@@ -270,7 +309,7 @@ export default function SettingsModal({ open, onClose }: Props): React.JSX.Eleme
               await window.api.settings.clearNotionToken()
               refresh()
             }}
-            hint="Optional — only needed for “Send to Notion”. Create one at notion.so/my-integrations, then share your unit pages with it from the Notion ••• menu → Connections. Without this, Notely still works as a copy/paste markdown tool."
+            hint="Optional — only needed for “Send to Notion”. Create one at notion.so/my-integrations, then share your unit pages with it from the Notion ••• menu → Connections. Without this, Notely.ai still works as a copy/paste markdown tool."
             extra={
               notionTokenSet ? (
                 <div style={{ marginTop: 8 }}>

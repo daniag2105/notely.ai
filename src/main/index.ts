@@ -6,6 +6,7 @@ import { registerSettingsIpc } from './ipc/settings'
 import { registerNotesIpc } from './ipc/notes'
 import { registerNotionIpc } from './ipc/notion'
 import { registerLlmIpc } from './ipc/llm'
+import { registerFilesIpc } from './ipc/files'
 
 function createWindow(): void {
   // Create the browser window.
@@ -59,6 +60,7 @@ app.whenReady().then(() => {
   registerNotesIpc()
   registerNotionIpc()
   registerLlmIpc()
+  registerFilesIpc()
 
   createWindow()
 

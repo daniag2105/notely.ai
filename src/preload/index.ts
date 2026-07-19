@@ -6,7 +6,11 @@ const api = {
     setNotionToken: (token: string) => ipcRenderer.invoke('settings:setNotionToken', token),
     clearNotionToken: () => ipcRenderer.invoke('settings:clearNotionToken'),
     getUnits: () => ipcRenderer.invoke('settings:getUnits'),
-    setUnits: (units: string[]) => ipcRenderer.invoke('settings:setUnits', units)
+    setUnits: (units: string[]) => ipcRenderer.invoke('settings:setUnits', units),
+    setAnthropicKey: (key: string) => ipcRenderer.invoke('settings:setAnthropicKey', key),
+    clearAnthropicKey: () => ipcRenderer.invoke('settings:clearAnthropicKey'),
+    setProvider: (provider: 'ollama' | 'anthropic') => ipcRenderer.invoke('settings:setProvider', provider),
+    setAnthropicModelId: (modelId: string) => ipcRenderer.invoke('settings:setAnthropicModelId', modelId)
   },
   llm: {
     checkConnection: () => ipcRenderer.invoke('llm:checkConnection')
@@ -41,6 +45,12 @@ const api = {
       ipcRenderer.invoke('notion:mapTopicPage', unit, topic, pageId),
     createNotesPage: (unitPageId: string, title: string, markdown: string) =>
       ipcRenderer.invoke('notion:createNotesPage', unitPageId, title, markdown)
+  },
+  files: {
+    pickFolder: (): Promise<string | null> => ipcRenderer.invoke('files:pickFolder'),
+    scanFolder: (rootPath: string) => ipcRenderer.invoke('files:scanFolder', rootPath),
+    readFile: (rootPath: string, filePath: string): Promise<string> =>
+      ipcRenderer.invoke('files:readFile', rootPath, filePath)
   }
 }
 

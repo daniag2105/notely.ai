@@ -1,9 +1,11 @@
 import { ipcMain } from 'electron'
 import * as store from '../services/store'
-import { checkOllamaConnection } from '../services/llm'
+import { checkAnthropicKey } from '../services/llm'
 
 export function registerLlmIpc(): void {
   ipcMain.handle('llm:checkConnection', () => {
-    return checkOllamaConnection(store.getOllamaBaseUrl(), store.getModelId())
+    const apiKey = store.getAnthropicKey()
+    if (!apiKey) return { ok: false, error: 'No API key set. Add your Anthropic key in Settings.' }
+    return checkAnthropicKey(apiKey, store.getAnthropicModelId())
   })
 }
