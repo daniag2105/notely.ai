@@ -75,9 +75,34 @@ export function registerNotionIpc(): void {
 
   ipcMain.handle(
     'notion:createNotesPage',
-    async (_e, unitPageId: string, title: string, markdown: string) => {
-      const blocks = markdownToBlocks(markdown)
-      return notion.createNotesPage(requireToken(), unitPageId, title, blocks)
+    async (
+      _e,
+      unitPageId: string,
+      title: string,
+      markdown: string,
+      figures: Array<{ id: string; dataB64: string; mediaType: string }> = []
+    ) => {
+      const token = requireToken()
+
+      // Upload each referenced figure first (sequentially — keeps well under Notion's rate
+      // limits) and map figure id -> Notion file_upload id. A failed upload just drops that one
+      // figure; the notes still publish.
+      const figureIdMap: Record<string, string> = {}
+      for (const fig of figures) {
+        try {
+          const filename = `figure-${fig.id.replace(/\./g, '-')}.png`
+          figureIdMap[fig.id] = await notion.uploadFileToNotion(token, {
+            dataB64: fig.dataB64,
+            mediaType: fig.mediaType,
+            filename
+          })
+        } catch (err) {
+          console.warn(`Skipping figure ${fig.id}: ${(err as Error).message}`)
+        }
+      }
+
+      const blocks = markdownToBlocks(markdown, figureIdMap)
+      return notion.createNotesPage(token, unitPageId, title, blocks)
     }
   )
 }

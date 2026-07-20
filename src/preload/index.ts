@@ -50,8 +50,12 @@ const api = {
       ipcRenderer.invoke('notion:createTopicPage', unitPageId, topic),
     mapTopicPage: (unit: string, topic: string, pageId: string) =>
       ipcRenderer.invoke('notion:mapTopicPage', unit, topic, pageId),
-    createNotesPage: (unitPageId: string, title: string, markdown: string) =>
-      ipcRenderer.invoke('notion:createNotesPage', unitPageId, title, markdown)
+    createNotesPage: (
+      unitPageId: string,
+      title: string,
+      markdown: string,
+      figures?: Array<{ id: string; dataB64: string; mediaType: string }>
+    ) => ipcRenderer.invoke('notion:createNotesPage', unitPageId, title, markdown, figures || [])
   },
   files: {
     pickFolder: (): Promise<string | null> => ipcRenderer.invoke('files:pickFolder'),

@@ -16,6 +16,7 @@ interface GenerateRequest {
   topic: string
   options: GenerateOptions
   sourceBlocks: ContentBlock[]
+  hasFigures?: boolean
 }
 
 function resolveGenerateConfig(): GenerateConfig {
@@ -28,10 +29,10 @@ function resolveGenerateConfig(): GenerateConfig {
 
 export function registerNotesIpc(): void {
   ipcMain.handle('notes:generate', async (event: IpcMainInvokeEvent, payload: GenerateRequest) => {
-    const { requestId, unit, topic, options, sourceBlocks } = payload
+    const { requestId, unit, topic, options, sourceBlocks, hasFigures } = payload
     const content: ContentBlock[] = [
       ...sourceBlocks,
-      { type: 'text', text: buildInstruction(unit, topic, options) }
+      { type: 'text', text: buildInstruction(unit, topic, options, hasFigures) }
     ]
     // The decrypted key (if any) lives only in this function's local scope for the duration
     // of the request — never logged, never sent back over IPC to the renderer.

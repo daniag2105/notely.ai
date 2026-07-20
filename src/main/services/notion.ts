@@ -44,6 +44,49 @@ async function notionFetch(
   return resp.json()
 }
 
+// Uploads image bytes into Notion via the File Upload API and returns the file_upload id, which
+// can then be referenced from an image block (`image.file_upload.id`). The file lives inside
+// Notion permanently at full quality — no external hosting, no expiring URLs. Single-part path
+// (<=20 MB), which a native slide figure is comfortably under. Must be attached to a block within
+// an hour of upload, so callers upload immediately before creating the page.
+export async function uploadFileToNotion(
+  token: string,
+  file: { dataB64: string; mediaType: string; filename: string }
+): Promise<string> {
+  // Step 1 — create the file upload object.
+  const created = await notionFetch(token, '/file_uploads', {
+    method: 'POST',
+    body: { filename: file.filename, content_type: file.mediaType }
+  })
+  const uploadUrl: string = created.upload_url
+  const uploadId: string = created.id
+
+  // Step 2 — send the bytes as multipart/form-data (field name must be `file`). Do NOT set
+  // Content-Type by hand — FormData sets the multipart boundary.
+  const bytes = Buffer.from(file.dataB64, 'base64')
+  const form = new FormData()
+  form.append('file', new Blob([bytes], { type: file.mediaType }), file.filename)
+
+  const doSend = async (): Promise<Response> =>
+    fetch(uploadUrl, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Notion-Version': NOTION_VERSION },
+      body: form
+    })
+
+  let resp = await doSend()
+  if (resp.status === 429) {
+    const retryAfter = Number(resp.headers.get('Retry-After') || '1')
+    await new Promise((r) => setTimeout(r, Math.max(1, retryAfter) * 1000))
+    resp = await doSend()
+  }
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({}))
+    throw new Error(data?.message || `Notion file upload ${resp.status}`)
+  }
+  return uploadId
+}
+
 function extractTitle(page: any): string {
   const props = page.properties || {}
   for (const key of Object.keys(props)) {
@@ -91,7 +134,9 @@ export async function searchPages(token: string, query: string): Promise<NotionP
   const candidates = results.filter(
     (p) => p.parent?.type !== 'database_id' && p.parent?.type !== 'data_source_id'
   )
-  const matched = q ? candidates.filter((p) => extractTitle(p).toLowerCase().includes(q)) : candidates
+  const matched = q
+    ? candidates.filter((p) => extractTitle(p).toLowerCase().includes(q))
+    : candidates
   matched.sort((a, b) => {
     const aTop = a.parent?.type === 'workspace' ? 0 : 1
     const bTop = b.parent?.type === 'workspace' ? 0 : 1
@@ -109,7 +154,10 @@ const HEADING_TYPES = ['heading_1', 'heading_2', 'heading_3']
 
 // Topics live as toggleable headings directly inside the Unit page (not separate child
 // pages) — this lists the existing ones so we can match/reuse them by title.
-export async function listToggleHeadings(token: string, unitPageId: string): Promise<NotionPageRef[]> {
+export async function listToggleHeadings(
+  token: string,
+  unitPageId: string
+): Promise<NotionPageRef[]> {
   const data = await notionFetch(token, `/blocks/${unitPageId}/children?page_size=100`)
   return (data.results || [])
     .filter((b: any) => HEADING_TYPES.includes(b.type) && b[b.type]?.is_toggleable)
@@ -140,7 +188,11 @@ export async function createTopicHeading(
   return { id: created.id, title }
 }
 
-async function appendBlocksBatched(token: string, blockId: string, blocks: unknown[]): Promise<void> {
+async function appendBlocksBatched(
+  token: string,
+  blockId: string,
+  blocks: unknown[]
+): Promise<void> {
   for (const chunk of chunkBlocks(blocks as any[])) {
     await notionFetch(token, `/blocks/${blockId}/children`, {
       method: 'PATCH',

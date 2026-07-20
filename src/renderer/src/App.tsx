@@ -19,13 +19,14 @@ import {
 } from 'lucide-react'
 import { T } from './theme'
 import { mdToHtml } from './lib/mdToHtml'
-import { pdfToImages } from './lib/pdf'
-import { publishToNotion } from './lib/notionPublish'
+import { pdfToImages, extractSlideFigures, SlideFigure } from './lib/pdf'
+import { publishToNotion, PublishFigure } from './lib/notionPublish'
 import SettingsModal from './components/SettingsModal'
 import NotionPagePicker, { PickerPage } from './components/NotionPagePicker'
 import BatchModal from './components/BatchModal'
 
-export type ContentBlock = { type: 'text'; text: string } | { type: 'image'; data: string; mediaType: string }
+export type ContentBlock =
+  { type: 'text'; text: string } | { type: 'image'; data: string; mediaType: string }
 
 export type Depth = 'concise' | 'standard' | 'detailed'
 
@@ -142,11 +143,28 @@ function SourceInput({
   const inputRef = useRef<HTMLInputElement>(null)
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-        <label style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: 'Georgia, serif' }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 8
+        }}
+      >
+        <label
+          style={{ fontSize: 13, fontWeight: 600, color: T.text, fontFamily: 'Georgia, serif' }}
+        >
           {title}
         </label>
-        <div style={{ display: 'flex', background: T.panelHi, borderRadius: 7, padding: 2, border: `1px solid ${T.lineSoft}` }}>
+        <div
+          style={{
+            display: 'flex',
+            background: T.panelHi,
+            borderRadius: 7,
+            padding: 2,
+            border: `1px solid ${T.lineSoft}`
+          }}
+        >
           {['upload', 'paste'].map((m) => (
             <button
               key={m}
@@ -194,7 +212,14 @@ function SourceInput({
             }}
           >
             {file ? <FileText size={16} /> : <Upload size={16} />}
-            <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <span
+              style={{
+                fontSize: 13,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap'
+              }}
+            >
               {file ? file.name : 'Choose file'}
             </span>
             {file && (
@@ -286,6 +311,9 @@ export default function App(): React.JSX.Element {
   const [slideMode, setSlideMode] = useState('upload')
   const [slideText, setSlideText] = useState('')
   const [slideFile, setSlideFile] = useState<File | null>(null)
+  // Figures extracted from the current PDF (native-res bytes + a small preview each), kept so we
+  // can embed the ones Claude references when publishing to Notion.
+  const [slideFigures, setSlideFigures] = useState<SlideFigure[]>([])
 
   const [txMode, setTxMode] = useState('paste')
   const [txText, setTxText] = useState('')
@@ -294,6 +322,7 @@ export default function App(): React.JSX.Element {
   const [depth, setDepth] = useState<Depth>('standard')
   const [terms, setTerms] = useState(true)
   const [summary, setSummary] = useState(true)
+  const [addFigures, setAddFigures] = useState(true)
   const [customInstructions, setCustomInstructions] = useState('')
 
   const [loading, setLoading] = useState(false)
@@ -314,7 +343,18 @@ export default function App(): React.JSX.Element {
   const hasTx = txMode === 'upload' ? !!txFile : txText.trim().length > 0
   const ready = unit && topic.trim() && (hasSlides || hasTx)
 
-  const previewHtml = useMemo(() => (out ? mdToHtml(out.notes) : ''), [out])
+  // Data-URI previews of extracted figures, keyed by figure id, so the Preview tab can render the
+  // `![caption](figure:N.k)` markers inline before publishing.
+  const figurePreviewMap = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const f of slideFigures) map[f.id] = `data:${f.mediaType};base64,${f.previewB64}`
+    return map
+  }, [slideFigures])
+
+  const previewHtml = useMemo(
+    () => (out ? mdToHtml(out.notes, figurePreviewMap) : ''),
+    [out, figurePreviewMap]
+  )
 
   const removeUnit = (u: string): void => {
     setUnits((prev) => {
@@ -350,7 +390,10 @@ export default function App(): React.JSX.Element {
     const blob = new Blob([out.notes], { type: 'text/markdown' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
-    const safe = (out.title || 'notes').replace(/[^\w\- ]/g, '').trim().replace(/\s+/g, '-')
+    const safe = (out.title || 'notes')
+      .replace(/[^\w\- ]/g, '')
+      .trim()
+      .replace(/\s+/g, '-')
     a.href = url
     a.download = `${unit}-${safe}.md`
     a.click()
@@ -363,14 +406,29 @@ export default function App(): React.JSX.Element {
     setProgress('')
     setNotionUrl('')
     setNotionError('')
+    setSlideFigures([])
     setLoading(true)
     try {
       const content: ContentBlock[] = []
+      let figures: SlideFigure[] = []
 
       if (slideMode === 'upload' && slideFile) {
         if (slideFile.type === 'application/pdf') {
           const images = await pdfToImages(slideFile)
           for (const data of images) content.push({ type: 'image', data, mediaType: 'image/png' })
+          if (addFigures) {
+            try {
+              // Read a fresh buffer — pdf.js detaches the one it parses, so we can't reuse it.
+              figures = await extractSlideFigures(await slideFile.arrayBuffer())
+              setSlideFigures(figures)
+              for (const f of figures) {
+                content.push({ type: 'text', text: `Figure ${f.id}:` })
+                content.push({ type: 'image', data: f.previewB64, mediaType: f.mediaType })
+              }
+            } catch (e) {
+              console.warn('Slide figure extraction failed', e)
+            }
+          }
         } else if (slideFile.type.startsWith('image/')) {
           const b64 = await fileToBase64(slideFile)
           content.push({ type: 'image', data: b64, mediaType: slideFile.type })
@@ -385,11 +443,20 @@ export default function App(): React.JSX.Element {
       let transcript = txText
       if (txMode === 'upload' && txFile) transcript = await readText(txFile)
       if (transcript.trim()) {
-        content.push({ type: 'text', text: `LECTURE TRANSCRIPT (ignore timestamps & filler):\n${transcript}` })
+        content.push({
+          type: 'text',
+          text: `LECTURE TRANSCRIPT (ignore timestamps & filler):\n${transcript}`
+        })
       }
 
       const result = await window.api.notes.generate(
-        { unit, topic, options: { depth, terms, summary, custom: customInstructions }, sourceBlocks: content },
+        {
+          unit,
+          topic,
+          options: { depth, terms, summary, custom: customInstructions },
+          sourceBlocks: content,
+          hasFigures: figures.length > 0
+        },
         (partial: string) => setProgress(progressTail(partial))
       )
       setOut(result)
@@ -418,7 +485,17 @@ export default function App(): React.JSX.Element {
         throw new Error('Add a Notion integration token in Settings first.')
       }
 
-      const result = await publishToNotion({ unit, topic, title: out.title, notes: out.notes }, openPicker)
+      // Only upload figures the notes actually reference, at native resolution.
+      const referenced = new Set<string>()
+      for (const m of out.notes.matchAll(/figure:([\w.-]+)/g)) referenced.add(m[1])
+      const figures: PublishFigure[] = slideFigures
+        .filter((f) => referenced.has(f.id))
+        .map((f) => ({ id: f.id, dataB64: f.dataB64, mediaType: f.mediaType }))
+
+      const result = await publishToNotion(
+        { unit, topic, title: out.title, notes: out.notes, figures },
+        openPicker
+      )
       setNotionUrl(result.url)
     } catch (e) {
       setNotionError((e as Error).message)
@@ -428,7 +505,14 @@ export default function App(): React.JSX.Element {
   }
 
   return (
-    <div style={{ minHeight: '100%', background: T.bg, color: T.text, fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+    <div
+      style={{
+        minHeight: '100%',
+        background: T.bg,
+        color: T.text,
+        fontFamily: 'system-ui, -apple-system, sans-serif'
+      }}
+    >
       <style>{`
         * { box-sizing: border-box; }
         .l2n-grid { display: grid; grid-template-columns: minmax(0,420px) minmax(0,1fr); gap: 20px; }
@@ -449,6 +533,10 @@ export default function App(): React.JSX.Element {
         .prev table.tb{ border-collapse: collapse; margin: 10px 0; width: 100%; font-size: 13px; }
         .prev table.tb th, .prev table.tb td{ border: 1px solid ${T.line}; padding: 6px 10px; text-align: left; }
         .prev table.tb th{ background:${T.panelHi}; }
+        .prev figure.slidefig{ margin: 12px 0; }
+        .prev figure.slidefig img{ display:block; max-width: 100%; height: auto; border-radius: 8px; border: 1px solid ${T.line}; }
+        .prev figure.slidefig figcaption{ font-size: 12px; color:${T.dim}; margin-top: 5px; font-style: italic; }
+        .prev .slidefig-ph{ margin: 12px 0; padding: 10px 12px; border: 1px dashed ${T.line}; border-radius: 8px; color:${T.faint}; font-size: 12.5px; }
         .spin{ animation: sp 1s linear infinite; } @keyframes sp{ to{ transform: rotate(360deg); } }
         .genbtn:hover:not(:disabled){ filter: brightness(1.08); }
         button:focus-visible{ outline: 2px solid ${T.blue}; outline-offset: 2px; }
@@ -456,7 +544,14 @@ export default function App(): React.JSX.Element {
 
       <div style={{ maxWidth: 1180, margin: '0 auto', padding: '26px 20px 60px' }}>
         {/* header */}
-        <div style={{ marginBottom: 22, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+        <div
+          style={{
+            marginBottom: 22,
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'space-between'
+          }}
+        >
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div
@@ -472,13 +567,28 @@ export default function App(): React.JSX.Element {
               >
                 <ClipboardList size={18} color={T.blue} />
               </div>
-              <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 24, margin: 0, letterSpacing: '-.01em' }}>
+              <h1
+                style={{
+                  fontFamily: 'Georgia, serif',
+                  fontSize: 24,
+                  margin: 0,
+                  letterSpacing: '-.01em'
+                }}
+              >
                 Notely.ai
               </h1>
             </div>
-            <p style={{ color: T.dim, fontSize: 13.5, margin: '8px 0 0', maxWidth: 640, lineHeight: 1.5 }}>
-              Drop a slide deck and paste the lecture transcript. Get clean, Notion-ready notes, routed
-              straight to the right unit and topic.
+            <p
+              style={{
+                color: T.dim,
+                fontSize: 13.5,
+                margin: '8px 0 0',
+                maxWidth: 640,
+                lineHeight: 1.5
+              }}
+            >
+              Drop a slide deck and paste the lecture transcript. Get clean, Notion-ready notes,
+              routed straight to the right unit and topic.
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -534,8 +644,8 @@ export default function App(): React.JSX.Element {
           >
             <AlertTriangle size={18} color={T.blue} style={{ flexShrink: 0 }} />
             <div style={{ flex: 1, fontSize: 13, color: T.text, lineHeight: 1.5 }}>
-              <b>One-time setup:</b> add your Anthropic API key to start generating notes. Get one at{' '}
-              <b>console.anthropic.com</b> — it stays encrypted on this Mac.
+              <b>One-time setup:</b> add your Anthropic API key to start generating notes. Get one
+              at <b>console.anthropic.com</b> — it stays encrypted on this Mac.
             </div>
             <button
               onClick={() => setSettingsOpen(true)}
@@ -560,18 +670,44 @@ export default function App(): React.JSX.Element {
           {/* ---------------- LEFT: inputs ---------------- */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {/* destination rail */}
-            <div style={{ background: T.panel, border: `1px solid ${T.line}`, borderRadius: 13, padding: 15 }}>
+            <div
+              style={{
+                background: T.panel,
+                border: `1px solid ${T.line}`,
+                borderRadius: 13,
+                padding: 15
+              }}
+            >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                <span style={{ fontSize: 11, letterSpacing: '.08em', textTransform: 'uppercase', color: T.faint }}>
+                <span
+                  style={{
+                    fontSize: 11,
+                    letterSpacing: '.08em',
+                    textTransform: 'uppercase',
+                    color: T.faint
+                  }}
+                >
                   Destination
                 </span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <Chip label="Unit" value={unit} color={T.blue} bg={T.blueBg} active={!!unit} />
                 <ChevronRight size={16} color={T.faint} style={{ flexShrink: 0 }} />
-                <Chip label="Topic" value={topic} color={T.teal} bg={T.tealBg} active={!!topic.trim()} />
+                <Chip
+                  label="Topic"
+                  value={topic}
+                  color={T.teal}
+                  bg={T.tealBg}
+                  active={!!topic.trim()}
+                />
                 <ChevronRight size={16} color={T.faint} style={{ flexShrink: 0 }} />
-                <Chip label="Page" value={out ? out.title : 'on generate'} color={T.purple} bg={T.purpleBg} active={!!out} />
+                <Chip
+                  label="Page"
+                  value={out ? out.title : 'on generate'}
+                  color={T.purple}
+                  bg={T.purpleBg}
+                  active={!!out}
+                />
               </div>
 
               {/* unit picker */}
@@ -595,7 +731,14 @@ export default function App(): React.JSX.Element {
                     >
                       <button
                         onClick={() => setUnit(u)}
-                        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'inherit', font: 'inherit' }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          padding: 0,
+                          cursor: 'pointer',
+                          color: 'inherit',
+                          font: 'inherit'
+                        }}
                       >
                         {u}
                       </button>
@@ -680,7 +823,17 @@ export default function App(): React.JSX.Element {
             </div>
 
             {/* sources */}
-            <div style={{ background: T.panel, border: `1px solid ${T.line}`, borderRadius: 13, padding: 15, display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div
+              style={{
+                background: T.panel,
+                border: `1px solid ${T.line}`,
+                borderRadius: 13,
+                padding: 15,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 16
+              }}
+            >
               <SourceInput
                 title="Lecture slides"
                 accept=".pdf,image/*,.txt,.md"
@@ -711,11 +864,35 @@ export default function App(): React.JSX.Element {
             </div>
 
             {/* options */}
-            <div style={{ background: T.panel, border: `1px solid ${T.line}`, borderRadius: 13, padding: 15 }}>
-              <span style={{ fontSize: 11, letterSpacing: '.08em', textTransform: 'uppercase', color: T.faint }}>
+            <div
+              style={{
+                background: T.panel,
+                border: `1px solid ${T.line}`,
+                borderRadius: 13,
+                padding: 15
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 11,
+                  letterSpacing: '.08em',
+                  textTransform: 'uppercase',
+                  color: T.faint
+                }}
+              >
                 Options
               </span>
-              <div style={{ display: 'flex', gap: 5, marginTop: 10, background: T.panelHi, padding: 3, borderRadius: 9, border: `1px solid ${T.lineSoft}` }}>
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 5,
+                  marginTop: 10,
+                  background: T.panelHi,
+                  padding: 3,
+                  borderRadius: 9,
+                  border: `1px solid ${T.lineSoft}`
+                }}
+              >
                 {(['concise', 'standard', 'detailed'] as Depth[]).map((d) => (
                   <button
                     key={d}
@@ -741,10 +918,21 @@ export default function App(): React.JSX.Element {
                 {(
                   [
                     ['Key terms', terms, setTerms],
-                    ['Summary', summary, setSummary]
+                    ['Summary', summary, setSummary],
+                    ['Slide figures', addFigures, setAddFigures]
                   ] as [string, boolean, (v: boolean) => void][]
                 ).map(([lbl, val, set]) => (
-                  <label key={lbl} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, color: T.dim, cursor: 'pointer' }}>
+                  <label
+                    key={lbl}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 7,
+                      fontSize: 12.5,
+                      color: T.dim,
+                      cursor: 'pointer'
+                    }}
+                  >
                     <span
                       onClick={() => set(!val)}
                       style={{
@@ -773,14 +961,30 @@ export default function App(): React.JSX.Element {
                   </label>
                 ))}
               </div>
+              {addFigures && (
+                <p style={{ fontSize: 11, color: T.faint, margin: '9px 0 0', lineHeight: 1.5 }}>
+                  Pulls diagrams &amp; photos out of PDF slides and embeds the relevant ones inline
+                  when you Send to Notion (they don&rsquo;t copy into the markdown).
+                </p>
+              )}
               <div style={{ marginTop: 14 }}>
-                <label style={{ fontSize: 11, letterSpacing: '.04em', color: T.faint, display: 'block', marginBottom: 6 }}>
+                <label
+                  style={{
+                    fontSize: 11,
+                    letterSpacing: '.04em',
+                    color: T.faint,
+                    display: 'block',
+                    marginBottom: 6
+                  }}
+                >
                   Custom instructions
                 </label>
                 <textarea
                   value={customInstructions}
                   onChange={(e) => setCustomInstructions(e.target.value)}
-                  placeholder={'Anything specific you want emphasized, skipped, or handled differently — e.g. "focus more on the derivation, skip the worked example"…'}
+                  placeholder={
+                    'Anything specific you want emphasized, skipped, or handled differently — e.g. "focus more on the derivation, skip the worked example"…'
+                  }
                   style={{
                     width: '100%',
                     minHeight: 64,
@@ -822,30 +1026,73 @@ export default function App(): React.JSX.Element {
               {loading ? 'Generating notes…' : 'Generate notes'}
             </button>
             {!ready && !loading && (
-              <p style={{ fontSize: 11.5, color: T.faint, textAlign: 'center', margin: '-6px 0 0' }}>
+              <p
+                style={{ fontSize: 11.5, color: T.faint, textAlign: 'center', margin: '-6px 0 0' }}
+              >
                 Pick a unit, name the topic, and add slides or a transcript.
               </p>
             )}
           </div>
 
           {/* ---------------- RIGHT: output ---------------- */}
-          <div style={{ background: T.panel, border: `1px solid ${T.line}`, borderRadius: 13, minHeight: 460, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div
+            style={{
+              background: T.panel,
+              border: `1px solid ${T.line}`,
+              borderRadius: 13,
+              minHeight: 460,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden'
+            }}
+          >
             {error && (
-              <div style={{ margin: 15, padding: 12, borderRadius: 9, background: `${T.danger}1a`, border: `1px solid ${T.danger}`, display: 'flex', gap: 9, alignItems: 'flex-start' }}>
+              <div
+                style={{
+                  margin: 15,
+                  padding: 12,
+                  borderRadius: 9,
+                  background: `${T.danger}1a`,
+                  border: `1px solid ${T.danger}`,
+                  display: 'flex',
+                  gap: 9,
+                  alignItems: 'flex-start'
+                }}
+              >
                 <AlertTriangle size={16} color={T.danger} style={{ marginTop: 1, flexShrink: 0 }} />
                 <span style={{ fontSize: 13, color: T.text, lineHeight: 1.5 }}>{error}</span>
               </div>
             )}
 
             {!out && !loading && !error && (
-              <div style={{ flex: 1, display: 'grid', placeItems: 'center', padding: 30, textAlign: 'center' }}>
+              <div
+                style={{
+                  flex: 1,
+                  display: 'grid',
+                  placeItems: 'center',
+                  padding: 30,
+                  textAlign: 'center'
+                }}
+              >
                 <div style={{ maxWidth: 360 }}>
-                  <div style={{ width: 46, height: 46, borderRadius: 12, background: T.panelHi, border: `1px solid ${T.line}`, display: 'grid', placeItems: 'center', margin: '0 auto 14px' }}>
+                  <div
+                    style={{
+                      width: 46,
+                      height: 46,
+                      borderRadius: 12,
+                      background: T.panelHi,
+                      border: `1px solid ${T.line}`,
+                      display: 'grid',
+                      placeItems: 'center',
+                      margin: '0 auto 14px'
+                    }}
+                  >
                     <FileText size={22} color={T.faint} />
                   </div>
                   <p style={{ color: T.dim, fontSize: 14, lineHeight: 1.6, margin: 0 }}>
-                    Your Notion-ready notes will appear here. The page title and body come out separately
-                    so you can drop them straight into the right topic page — or send them to Notion directly.
+                    Your Notion-ready notes will appear here. The page title and body come out
+                    separately so you can drop them straight into the right topic page — or send
+                    them to Notion directly.
                   </p>
                 </div>
               </div>
@@ -853,10 +1100,33 @@ export default function App(): React.JSX.Element {
 
             {loading && (
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: 20 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 9, color: T.dim, fontSize: 13, marginBottom: 12 }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 9,
+                    color: T.dim,
+                    fontSize: 13,
+                    marginBottom: 12
+                  }}
+                >
                   <Loader2 size={15} className="spin" /> Reading sources & writing notes…
                 </div>
-                <pre style={{ flex: 1, margin: 0, padding: 12, borderRadius: 9, background: '#140f11', border: `1px solid ${T.lineSoft}`, color: T.dim, fontSize: 12, lineHeight: 1.55, overflow: 'auto', whiteSpace: 'pre-wrap' }}>
+                <pre
+                  style={{
+                    flex: 1,
+                    margin: 0,
+                    padding: 12,
+                    borderRadius: 9,
+                    background: '#140f11',
+                    border: `1px solid ${T.lineSoft}`,
+                    color: T.dim,
+                    fontSize: 12,
+                    lineHeight: 1.55,
+                    overflow: 'auto',
+                    whiteSpace: 'pre-wrap'
+                  }}
+                >
                   {progress || '…'}
                 </pre>
               </div>
@@ -866,25 +1136,92 @@ export default function App(): React.JSX.Element {
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                 {/* destination + title bar */}
                 <div style={{ padding: '14px 15px', borderBottom: `1px solid ${T.lineSoft}` }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: T.dim, marginBottom: 9, flexWrap: 'wrap' }}>
-                    <span style={{ padding: '2px 8px', borderRadius: 6, background: T.blueBg, color: T.blue, fontWeight: 600 }}>{unit}</span>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      fontSize: 12,
+                      color: T.dim,
+                      marginBottom: 9,
+                      flexWrap: 'wrap'
+                    }}
+                  >
+                    <span
+                      style={{
+                        padding: '2px 8px',
+                        borderRadius: 6,
+                        background: T.blueBg,
+                        color: T.blue,
+                        fontWeight: 600
+                      }}
+                    >
+                      {unit}
+                    </span>
                     <ChevronRight size={13} />
-                    <span style={{ padding: '2px 8px', borderRadius: 6, background: T.tealBg, color: T.teal, fontWeight: 600 }}>{topic}</span>
+                    <span
+                      style={{
+                        padding: '2px 8px',
+                        borderRadius: 6,
+                        background: T.tealBg,
+                        color: T.teal,
+                        fontWeight: 600
+                      }}
+                    >
+                      {topic}
+                    </span>
                     <ChevronRight size={13} />
                     <span style={{ color: T.faint }}>new sub-page →</span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ flex: 1, minWidth: 0, padding: '8px 11px', borderRadius: 8, background: T.panelHi, border: `1px solid ${T.lineSoft}` }}>
-                      <div style={{ fontSize: 9.5, letterSpacing: '.08em', textTransform: 'uppercase', color: T.faint }}>
+                    <div
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        padding: '8px 11px',
+                        borderRadius: 8,
+                        background: T.panelHi,
+                        border: `1px solid ${T.lineSoft}`
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 9.5,
+                          letterSpacing: '.08em',
+                          textTransform: 'uppercase',
+                          color: T.faint
+                        }}
+                      >
                         Page title
                       </div>
-                      <div style={{ fontSize: 14, fontWeight: 600, fontFamily: 'Georgia, serif', color: T.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <div
+                        style={{
+                          fontSize: 14,
+                          fontWeight: 600,
+                          fontFamily: 'Georgia, serif',
+                          color: T.text,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis'
+                        }}
+                      >
                         {out.title}
                       </div>
                     </div>
                     <button
                       onClick={() => copy(out.title, 'title')}
-                      style={{ padding: '9px 11px', borderRadius: 8, border: `1px solid ${T.lineSoft}`, background: T.panelHi, color: T.dim, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}
+                      style={{
+                        padding: '9px 11px',
+                        borderRadius: 8,
+                        border: `1px solid ${T.lineSoft}`,
+                        background: T.panelHi,
+                        color: T.dim,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        fontSize: 12
+                      }}
                     >
                       {copied === 'title' ? <Check size={14} color={T.teal} /> : <Copy size={14} />}
                     </button>
@@ -892,7 +1229,17 @@ export default function App(): React.JSX.Element {
                 </div>
 
                 {/* tabs + actions */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 15px', borderBottom: `1px solid ${T.lineSoft}`, flexWrap: 'wrap', gap: 8 }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '8px 15px',
+                    borderBottom: `1px solid ${T.lineSoft}`,
+                    flexWrap: 'wrap',
+                    gap: 8
+                  }}
+                >
                   <div style={{ display: 'flex', gap: 4 }}>
                     {['markdown', 'preview'].map((t) => (
                       <button
@@ -917,20 +1264,56 @@ export default function App(): React.JSX.Element {
                   <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
                     <button
                       onClick={() => copy(out.notes, 'notes')}
-                      style={{ padding: '6px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', background: T.blue, color: '#fff', fontSize: 12.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}
+                      style={{
+                        padding: '6px 12px',
+                        borderRadius: 8,
+                        border: 'none',
+                        cursor: 'pointer',
+                        background: T.blue,
+                        color: '#fff',
+                        fontSize: 12.5,
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6
+                      }}
                     >
-                      {copied === 'notes' ? <Check size={14} /> : <Copy size={14} />} {copied === 'notes' ? 'Copied' : 'Copy markdown'}
+                      {copied === 'notes' ? <Check size={14} /> : <Copy size={14} />}{' '}
+                      {copied === 'notes' ? 'Copied' : 'Copy markdown'}
                     </button>
                     <button
                       onClick={download}
-                      style={{ padding: '6px 10px', borderRadius: 8, border: `1px solid ${T.lineSoft}`, background: T.panelHi, color: T.dim, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5 }}
+                      style={{
+                        padding: '6px 10px',
+                        borderRadius: 8,
+                        border: `1px solid ${T.lineSoft}`,
+                        background: T.panelHi,
+                        color: T.dim,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        fontSize: 12.5
+                      }}
                     >
                       <Download size={14} /> .md
                     </button>
                     <button
                       onClick={sendToNotion}
                       disabled={notionBusy}
-                      style={{ padding: '6px 12px', borderRadius: 8, border: `1px solid ${T.purple}`, background: T.purpleBg, color: T.purple, cursor: notionBusy ? 'default' : 'pointer', fontSize: 12.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}
+                      style={{
+                        padding: '6px 12px',
+                        borderRadius: 8,
+                        border: `1px solid ${T.purple}`,
+                        background: T.purpleBg,
+                        color: T.purple,
+                        cursor: notionBusy ? 'default' : 'pointer',
+                        fontSize: 12.5,
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6
+                      }}
                     >
                       {notionBusy ? <Loader2 size={14} className="spin" /> : <Send size={14} />}
                       {notionBusy ? 'Sending…' : 'Send to Notion'}
@@ -939,18 +1322,41 @@ export default function App(): React.JSX.Element {
                 </div>
 
                 {(notionUrl || notionError) && (
-                  <div style={{ padding: '9px 15px', borderBottom: `1px solid ${T.lineSoft}`, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div
+                    style={{
+                      padding: '9px 15px',
+                      borderBottom: `1px solid ${T.lineSoft}`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8
+                    }}
+                  >
                     {notionUrl ? (
                       <a
                         href={notionUrl}
                         target="_blank"
                         rel="noreferrer"
-                        style={{ fontSize: 12.5, color: T.purple, display: 'flex', alignItems: 'center', gap: 6, textDecoration: 'none' }}
+                        style={{
+                          fontSize: 12.5,
+                          color: T.purple,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          textDecoration: 'none'
+                        }}
                       >
                         <Check size={13} /> Created in Notion — Open page <ExternalLink size={12} />
                       </a>
                     ) : (
-                      <span style={{ fontSize: 12.5, color: T.danger, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span
+                        style={{
+                          fontSize: 12.5,
+                          color: T.danger,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6
+                        }}
+                      >
                         <AlertTriangle size={13} /> {notionError}
                       </span>
                     )}
@@ -958,17 +1364,45 @@ export default function App(): React.JSX.Element {
                 )}
 
                 {/* content */}
-                <div style={{ flex: 1, overflow: 'auto', padding: tab === 'preview' ? '6px 18px 24px' : 0, minHeight: 0 }}>
+                <div
+                  style={{
+                    flex: 1,
+                    overflow: 'auto',
+                    padding: tab === 'preview' ? '6px 18px 24px' : 0,
+                    minHeight: 0
+                  }}
+                >
                   {tab === 'preview' ? (
                     <div className="prev" dangerouslySetInnerHTML={{ __html: previewHtml }} />
                   ) : (
-                    <pre style={{ margin: 0, padding: '16px 18px', color: T.text, fontSize: 12.5, lineHeight: 1.6, fontFamily: 'ui-monospace, Menlo, monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                    <pre
+                      style={{
+                        margin: 0,
+                        padding: '16px 18px',
+                        color: T.text,
+                        fontSize: 12.5,
+                        lineHeight: 1.6,
+                        fontFamily: 'ui-monospace, Menlo, monospace',
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word'
+                      }}
+                    >
                       {out.notes}
                     </pre>
                   )}
                 </div>
 
-                <div style={{ padding: '9px 15px', borderTop: `1px solid ${T.lineSoft}`, fontSize: 11.5, color: T.faint, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div
+                  style={{
+                    padding: '9px 15px',
+                    borderTop: `1px solid ${T.lineSoft}`,
+                    fontSize: 11.5,
+                    color: T.faint,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6
+                  }}
+                >
                   <span>
                     Send straight to Notion above, or paste under{' '}
                     <b style={{ color: T.dim }}>

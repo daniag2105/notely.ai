@@ -3,11 +3,18 @@ import type { PickerState } from '../App'
 
 export type OpenPicker = (cfg: Omit<PickerState, 'resolve' | 'reject'>) => Promise<PickerPage>
 
+export interface PublishFigure {
+  id: string
+  dataB64: string
+  mediaType: string
+}
+
 interface PublishArgs {
   unit: string
   topic: string
   title: string
   notes: string
+  figures?: PublishFigure[]
 }
 
 // Resolve-unit -> resolve/create-topic -> createNotesPage, shared by both the single-lecture
@@ -15,14 +22,15 @@ interface PublishArgs {
 // window.api.notion.isConfigured() first — batch mode wants to check that once before looping
 // over many items rather than failing on item one, so it's kept out of this shared helper.
 export async function publishToNotion(
-  { unit, topic, title, notes }: PublishArgs,
+  { unit, topic, title, notes, figures }: PublishArgs,
   openPicker: OpenPicker
 ): Promise<{ id: string; url: string }> {
   let unitPage = await window.api.notion.resolveUnitPage(unit)
   if (!unitPage) {
     unitPage = await openPicker({
       heading: `Find the Notion page for "${unit}"`,
-      subheading: 'Pick the top-level page for this unit. It must already be shared with your integration.',
+      subheading:
+        'Pick the top-level page for this unit. It must already be shared with your integration.',
       initialQuery: unit,
       fetchResults: (q) => window.api.notion.searchTopLevelPages(q)
     })
@@ -46,5 +54,5 @@ export async function publishToNotion(
     })
   }
 
-  return window.api.notion.createNotesPage(resolvedUnitPage.id, title, notes)
+  return window.api.notion.createNotesPage(resolvedUnitPage.id, title, notes, figures)
 }

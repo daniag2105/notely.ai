@@ -16,7 +16,11 @@ function chunkText(content: string): string[] {
   return parts
 }
 
-function pushTextRuns(runs: RichText[], content: string, annotations: Record<string, boolean>): void {
+function pushTextRuns(
+  runs: RichText[],
+  content: string,
+  annotations: Record<string, boolean>
+): void {
   if (!content) return
   for (const chunk of chunkText(content)) {
     runs.push({
@@ -93,13 +97,41 @@ function block(type: string, body: Record<string, unknown>): NotionBlock {
   return { object: 'block', type, [type]: body }
 }
 
-export function markdownToBlocks(markdown: string): NotionBlock[] {
+// A standalone image marker the model emits for an extracted slide figure, e.g.
+// `![manometer setup](figure:7.1)`. Resolved to a Notion image block backed by an uploaded file.
+const FIGURE_MARKER = /^!\[([^\]]*)\]\(figure:([\w.-]+)\)\s*$/
+
+// `figureIdMap` maps a figure id ("7.1") to the Notion file_upload id it was uploaded as. When a
+// marker's id isn't in the map (upload failed, or figures weren't sent), the line is dropped
+// rather than emitting a broken block.
+export function markdownToBlocks(
+  markdown: string,
+  figureIdMap: Record<string, string> = {}
+): NotionBlock[] {
   const lines = (markdown || '').replace(/\r/g, '').split('\n')
   const blocks: NotionBlock[] = []
   let i = 0
 
   while (i < lines.length) {
     const line = lines[i]
+
+    // extracted slide figure — `![caption](figure:N.k)` on its own line
+    const figMatch = line.match(FIGURE_MARKER)
+    if (figMatch) {
+      const caption = figMatch[1].trim()
+      const uploadId = figureIdMap[figMatch[2]]
+      if (uploadId) {
+        blocks.push(
+          block('image', {
+            type: 'file_upload',
+            file_upload: { id: uploadId },
+            caption: caption ? inlineToRichText(caption) : []
+          })
+        )
+      }
+      i++
+      continue
+    }
 
     // fenced code block
     if (/^```/.test(line)) {

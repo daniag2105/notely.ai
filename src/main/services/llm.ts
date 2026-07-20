@@ -1,6 +1,5 @@
 export type ContentBlock =
-  | { type: 'text'; text: string }
-  | { type: 'image'; data: string; mediaType: string }
+  { type: 'text'; text: string } | { type: 'image'; data: string; mediaType: string }
 
 export type Provider = 'ollama' | 'anthropic'
 
@@ -62,7 +61,17 @@ RETURN EXACTLY this shape, nothing before or after:
 <the full markdown notes>`
 }
 
-export function buildInstruction(unit: string, topic: string, opts: GenerateOptions): string {
+const FIGURE_INSTRUCTIONS = `
+FIGURES: You are also given extracted slide figures, each shown right after a line "Figure N.k:" (N = slide, k = figure on that slide). Where one of these figures materially helps understanding — a diagram, plot, chart, circuit, worked figure, or a photo the notes discuss — embed it INLINE on its own line, next to the relevant text, using exactly this syntax:
+![short caption](figure:N.k)
+Rules: only embed figures that genuinely add value; never embed logos, decorative images, headshots, or text-only screenshots. Reference each figure at most once. Keep the caption short. If no figure is worth embedding, embed none. Do not invent figure ids — only use ids you were actually given.`
+
+export function buildInstruction(
+  unit: string,
+  topic: string,
+  opts: GenerateOptions,
+  hasFigures = false
+): string {
   const depthMap: Record<GenerateOptions['depth'], string> = {
     concise: 'Concise: hit only the load-bearing points, keep it skimmable.',
     standard: 'Standard: solid revision notes with the key reasoning included.',
@@ -74,7 +83,7 @@ TOPIC / SECTION: ${topic}
 Depth: ${depthMap[opts.depth]}
 ${opts.terms ? 'Include a Key terms list.' : 'You may skip a separate Key terms list.'}
 ${opts.summary ? 'Include a Summary / takeaways section at the end.' : ''}
-${opts.custom.trim() ? `\nADDITIONAL INSTRUCTIONS FROM THE STUDENT — follow these, they take priority over the defaults above where they conflict:\n${opts.custom.trim()}\n` : ''}
+${opts.custom.trim() ? `\nADDITIONAL INSTRUCTIONS FROM THE STUDENT — follow these, they take priority over the defaults above where they conflict:\n${opts.custom.trim()}\n` : ''}${hasFigures ? FIGURE_INSTRUCTIONS + '\n' : ''}
 The page title must be copied from the slides themselves (the title/front slide, or the first slide's heading) — not invented or rephrased. Then produce the notes.`
 }
 
@@ -218,9 +227,8 @@ async function generateNotesAnthropic(
   systemPrompt: string,
   onProgress: (fullText: string) => void
 ): Promise<string> {
-  const messages: Array<{ role: 'user' | 'assistant'; content: AnthropicContentBlock[] | string }> = [
-    { role: 'user', content: toAnthropicContent(contentBlocks) }
-  ]
+  const messages: Array<{ role: 'user' | 'assistant'; content: AnthropicContentBlock[] | string }> =
+    [{ role: 'user', content: toAnthropicContent(contentBlocks) }]
 
   let full = ''
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -233,10 +241,17 @@ async function generateNotesAnthropic(
           'x-api-key': apiKey,
           'anthropic-version': '2023-06-01'
         },
-        body: JSON.stringify({ model: modelId, max_tokens: MAX_TOKENS, system: systemPrompt, messages })
+        body: JSON.stringify({
+          model: modelId,
+          max_tokens: MAX_TOKENS,
+          system: systemPrompt,
+          messages
+        })
       })
     } catch (e) {
-      throw new Error(`Couldn't reach Anthropic's API (${(e as Error).message}). Check your internet connection.`)
+      throw new Error(
+        `Couldn't reach Anthropic's API (${(e as Error).message}). Check your internet connection.`
+      )
     }
     if (!resp.ok) {
       // Response body only — never echoes back request headers, so the API key can't leak here.
@@ -267,9 +282,21 @@ export async function generateNotes(
   onProgress: (fullText: string) => void
 ): Promise<string> {
   if (config.provider === 'anthropic') {
-    return generateNotesAnthropic(config.apiKey, config.modelId, contentBlocks, systemPrompt, onProgress)
+    return generateNotesAnthropic(
+      config.apiKey,
+      config.modelId,
+      contentBlocks,
+      systemPrompt,
+      onProgress
+    )
   }
-  return generateNotesOllama(config.baseUrl, config.modelId, contentBlocks, systemPrompt, onProgress)
+  return generateNotesOllama(
+    config.baseUrl,
+    config.modelId,
+    contentBlocks,
+    systemPrompt,
+    onProgress
+  )
 }
 
 export function parseOutput(raw: string, topic: string): { title: string; notes: string } {

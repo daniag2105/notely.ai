@@ -1,7 +1,10 @@
 const escapeHtml = (s: string): string =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
-export function mdToHtml(md: string): string {
+// `previewMap` maps an extracted-figure id ("7.1") to a data-URI preview, so a
+// `![caption](figure:7.1)` marker renders as the actual image inline (matching how it will look
+// once published to Notion). Unknown ids fall back to a labelled placeholder.
+export function mdToHtml(md: string, previewMap: Record<string, string> = {}): string {
   if (!md) return ''
   const lines = md.replace(/\r/g, '').split('\n')
   let html = ''
@@ -18,6 +21,21 @@ export function mdToHtml(md: string): string {
 
   while (i < lines.length) {
     const l = lines[i]
+    const fig = l.match(/^!\[([^\]]*)\]\(figure:([\w.-]+)\)\s*$/)
+    if (fig) {
+      const cap = fig[1].trim()
+      const src = previewMap[fig[2]]
+      if (src) {
+        html +=
+          `<figure class="slidefig"><img src="${src}" alt="${escapeHtml(cap)}"/>` +
+          (cap ? `<figcaption>${inline(cap)}</figcaption>` : '') +
+          '</figure>'
+      } else {
+        html += `<div class="slidefig-ph">🖼 ${escapeHtml(cap || `Figure ${fig[2]}`)}</div>`
+      }
+      i++
+      continue
+    }
     if (/^```/.test(l)) {
       let code = ''
       i++
@@ -62,7 +80,9 @@ export function mdToHtml(md: string): string {
         '<table class="tb"><thead><tr>' +
         head.map((c) => `<th>${inline(c)}</th>`).join('') +
         '</tr></thead><tbody>' +
-        body.map((r) => '<tr>' + r.map((c) => `<td>${inline(c)}</td>`).join('') + '</tr>').join('') +
+        body
+          .map((r) => '<tr>' + r.map((c) => `<td>${inline(c)}</td>`).join('') + '</tr>')
+          .join('') +
         '</tbody></table>'
       continue
     }
