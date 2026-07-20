@@ -1,8 +1,8 @@
 import { ipcMain, IpcMainInvokeEvent } from 'electron'
 import * as store from '../services/store'
 import {
-  buildSystemPrompt,
-  buildInstruction,
+  buildBaseSystemPrompt,
+  buildTaskInstruction,
   generateNotes,
   parseOutput,
   ContentBlock,
@@ -30,16 +30,18 @@ function resolveGenerateConfig(): GenerateConfig {
 export function registerNotesIpc(): void {
   ipcMain.handle('notes:generate', async (event: IpcMainInvokeEvent, payload: GenerateRequest) => {
     const { requestId, unit, topic, options, sourceBlocks, hasFigures } = payload
-    const content: ContentBlock[] = [
-      ...sourceBlocks,
-      { type: 'text', text: buildInstruction(unit, topic, options, hasFigures) }
-    ]
     // The decrypted key (if any) lives only in this function's local scope for the duration
     // of the request — never logged, never sent back over IPC to the renderer.
     const config = resolveGenerateConfig()
-    const raw = await generateNotes(config, content, buildSystemPrompt(), (fullText) => {
-      event.sender.send('notes:generate:progress', { requestId, text: fullText })
-    })
-    return parseOutput(raw, topic)
+    const { raw, verified } = await generateNotes(
+      config,
+      sourceBlocks,
+      buildBaseSystemPrompt(),
+      buildTaskInstruction(unit, topic, options, hasFigures),
+      (fullText) => {
+        event.sender.send('notes:generate:progress', { requestId, text: fullText })
+      }
+    )
+    return { ...parseOutput(raw, topic), verified }
   })
 }

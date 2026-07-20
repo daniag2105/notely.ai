@@ -29,11 +29,11 @@ export type ContentBlock =
   { type: 'text'; text: string } | { type: 'image'; data: string; mediaType: string }
 
 export type Depth = 'concise' | 'standard' | 'detailed'
+export type OutputMode = 'notes' | 'math' | 'examples'
 
 export interface GenerateOptions {
   depth: Depth
-  terms: boolean
-  summary: boolean
+  mode: OutputMode
   custom: string
 }
 
@@ -319,16 +319,15 @@ export default function App(): React.JSX.Element {
   const [txText, setTxText] = useState('')
   const [txFile, setTxFile] = useState<File | null>(null)
 
+  const [mode, setMode] = useState<OutputMode>('notes')
   const [depth, setDepth] = useState<Depth>('standard')
-  const [terms, setTerms] = useState(true)
-  const [summary, setSummary] = useState(true)
   const [addFigures, setAddFigures] = useState(true)
   const [customInstructions, setCustomInstructions] = useState('')
 
   const [loading, setLoading] = useState(false)
   const [progress, setProgress] = useState('')
   const [error, setError] = useState('')
-  const [out, setOut] = useState<{ title: string; notes: string } | null>(null)
+  const [out, setOut] = useState<{ title: string; notes: string; verified?: boolean } | null>(null)
   const [tab, setTab] = useState('markdown')
   const [copied, setCopied] = useState('')
 
@@ -453,7 +452,7 @@ export default function App(): React.JSX.Element {
         {
           unit,
           topic,
-          options: { depth, terms, summary, custom: customInstructions },
+          options: { depth, mode, custom: customInstructions },
           sourceBlocks: content,
           hasFigures: figures.length > 0
         },
@@ -882,6 +881,7 @@ export default function App(): React.JSX.Element {
               >
                 Options
               </span>
+              {/* output mode */}
               <div
                 style={{
                   display: 'flex',
@@ -893,10 +893,16 @@ export default function App(): React.JSX.Element {
                   border: `1px solid ${T.lineSoft}`
                 }}
               >
-                {(['concise', 'standard', 'detailed'] as Depth[]).map((d) => (
+                {(
+                  [
+                    ['notes', 'Notes'],
+                    ['math', 'Math'],
+                    ['examples', 'Examples']
+                  ] as [OutputMode, string][]
+                ).map(([m, lbl]) => (
                   <button
-                    key={d}
-                    onClick={() => setDepth(d)}
+                    key={m}
+                    onClick={() => setMode(m)}
                     style={{
                       flex: 1,
                       padding: '6px',
@@ -904,23 +910,65 @@ export default function App(): React.JSX.Element {
                       fontSize: 12,
                       cursor: 'pointer',
                       border: 'none',
-                      textTransform: 'capitalize',
                       fontWeight: 600,
-                      background: depth === d ? T.blue : 'transparent',
-                      color: depth === d ? '#fff' : T.dim
+                      background: mode === m ? T.blue : 'transparent',
+                      color: mode === m ? '#fff' : T.dim
                     }}
                   >
-                    {d}
+                    {lbl}
                   </button>
                 ))}
               </div>
+              <p style={{ fontSize: 11, color: T.faint, margin: '8px 0 0', lineHeight: 1.5 }}>
+                {mode === 'notes'
+                  ? 'Full study notes from the slides + transcript.'
+                  : mode === 'math'
+                    ? 'A clean sheet of every formula, constant & key quantity — nothing else.'
+                    : 'Only the lecture’s worked examples, solved step by step.'}
+              </p>
+
+              {/* depth — notes only */}
+              {mode === 'notes' && (
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: 5,
+                    marginTop: 12,
+                    background: T.panelHi,
+                    padding: 3,
+                    borderRadius: 9,
+                    border: `1px solid ${T.lineSoft}`
+                  }}
+                >
+                  {(['concise', 'standard', 'detailed'] as Depth[]).map((d) => (
+                    <button
+                      key={d}
+                      onClick={() => setDepth(d)}
+                      style={{
+                        flex: 1,
+                        padding: '6px',
+                        borderRadius: 6,
+                        fontSize: 12,
+                        cursor: 'pointer',
+                        border: 'none',
+                        textTransform: 'capitalize',
+                        fontWeight: 600,
+                        background: depth === d ? T.blue : 'transparent',
+                        color: depth === d ? '#fff' : T.dim
+                      }}
+                    >
+                      {d}
+                    </button>
+                  ))}
+                </div>
+              )}
               <div style={{ display: 'flex', gap: 16, marginTop: 12 }}>
                 {(
-                  [
-                    ['Key terms', terms, setTerms],
-                    ['Summary', summary, setSummary],
-                    ['Slide figures', addFigures, setAddFigures]
-                  ] as [string, boolean, (v: boolean) => void][]
+                  [['Slide figures', addFigures, setAddFigures]] as [
+                    string,
+                    boolean,
+                    (v: boolean) => void
+                  ][]
                 ).map(([lbl, val, set]) => (
                   <label
                     key={lbl}
@@ -1186,13 +1234,39 @@ export default function App(): React.JSX.Element {
                     >
                       <div
                         style={{
-                          fontSize: 9.5,
-                          letterSpacing: '.08em',
-                          textTransform: 'uppercase',
-                          color: T.faint
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 8
                         }}
                       >
-                        Page title
+                        <span
+                          style={{
+                            fontSize: 9.5,
+                            letterSpacing: '.08em',
+                            textTransform: 'uppercase',
+                            color: T.faint
+                          }}
+                        >
+                          Page title
+                        </span>
+                        {out.verified && (
+                          <span
+                            title="Re-checked against your slides & transcript for accuracy"
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 3,
+                              fontSize: 9.5,
+                              letterSpacing: '.04em',
+                              textTransform: 'uppercase',
+                              color: T.teal,
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
+                            <Check size={11} /> Accuracy-checked
+                          </span>
+                        )}
                       </div>
                       <div
                         style={{
@@ -1431,7 +1505,7 @@ export default function App(): React.JSX.Element {
         units={units}
         unit={unit}
         setUnit={setUnit}
-        options={{ depth, terms, summary, custom: customInstructions }}
+        options={{ depth, mode, custom: customInstructions }}
         openPicker={openPicker}
       />
 
