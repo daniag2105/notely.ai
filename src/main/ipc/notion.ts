@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron'
 import * as store from '../services/store'
 import * as notion from '../services/notion'
+import { connectNotion, disconnectNotion } from '../services/notionOauth'
 import { markdownToBlocks } from '../services/markdownToBlocks'
 
 function requireToken(): string {
@@ -11,6 +12,13 @@ function requireToken(): string {
 
 export function registerNotionIpc(): void {
   ipcMain.handle('notion:isConfigured', () => !!store.getNotionToken())
+
+  ipcMain.handle('notion:connect', () => connectNotion())
+
+  ipcMain.handle('notion:disconnect', () => {
+    disconnectNotion()
+    return { ok: true }
+  })
 
   ipcMain.handle('notion:testConnection', async () => {
     const token = store.getNotionToken()
@@ -46,7 +54,9 @@ export function registerNotionIpc(): void {
 
       const token = requireToken()
       const children = await notion.listToggleHeadings(token, unitPageId)
-      const exact = children.find((c) => c.title.trim().toLowerCase() === topic.trim().toLowerCase())
+      const exact = children.find(
+        (c) => c.title.trim().toLowerCase() === topic.trim().toLowerCase()
+      )
       if (exact) {
         store.mapTopicPage(unit, topic, exact.id)
         return exact

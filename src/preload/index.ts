@@ -9,8 +9,10 @@ const api = {
     setUnits: (units: string[]) => ipcRenderer.invoke('settings:setUnits', units),
     setAnthropicKey: (key: string) => ipcRenderer.invoke('settings:setAnthropicKey', key),
     clearAnthropicKey: () => ipcRenderer.invoke('settings:clearAnthropicKey'),
-    setProvider: (provider: 'ollama' | 'anthropic') => ipcRenderer.invoke('settings:setProvider', provider),
-    setAnthropicModelId: (modelId: string) => ipcRenderer.invoke('settings:setAnthropicModelId', modelId)
+    setProvider: (provider: 'ollama' | 'anthropic') =>
+      ipcRenderer.invoke('settings:setProvider', provider),
+    setAnthropicModelId: (modelId: string) =>
+      ipcRenderer.invoke('settings:setAnthropicModelId', modelId)
   },
   llm: {
     checkConnection: () => ipcRenderer.invoke('llm:checkConnection')
@@ -32,11 +34,16 @@ const api = {
   },
   notion: {
     isConfigured: () => ipcRenderer.invoke('notion:isConfigured'),
+    connect: (): Promise<{ ok: boolean; workspaceName?: string; error?: string }> =>
+      ipcRenderer.invoke('notion:connect'),
+    disconnect: () => ipcRenderer.invoke('notion:disconnect'),
     testConnection: () => ipcRenderer.invoke('notion:testConnection'),
     searchTopLevelPages: (query: string) => ipcRenderer.invoke('notion:searchTopLevelPages', query),
-    listChildPages: (parentPageId: string) => ipcRenderer.invoke('notion:listChildPages', parentPageId),
+    listChildPages: (parentPageId: string) =>
+      ipcRenderer.invoke('notion:listChildPages', parentPageId),
     resolveUnitPage: (unit: string) => ipcRenderer.invoke('notion:resolveUnitPage', unit),
-    mapUnitPage: (unit: string, pageId: string) => ipcRenderer.invoke('notion:mapUnitPage', unit, pageId),
+    mapUnitPage: (unit: string, pageId: string) =>
+      ipcRenderer.invoke('notion:mapUnitPage', unit, pageId),
     resolveTopicPage: (unitPageId: string, unit: string, topic: string) =>
       ipcRenderer.invoke('notion:resolveTopicPage', unitPageId, unit, topic),
     createTopicPage: (unitPageId: string, topic: string) =>

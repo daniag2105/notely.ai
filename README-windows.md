@@ -83,10 +83,10 @@ right-click ▸ Open step — it's expected for an app you built yourself.)
 ## 6. Add your keys
 
 Open the app → **Settings** → paste your **Anthropic API key** (`sk-ant-…`, required). Optionally
-add your **Notion integration token** (`ntn_…`) to enable "Send to Notion".
+click **Connect Notion** to link your workspace and enable "Send to Notion".
 
-For how to get each token (including the Notion "share the page with your integration" step), see
-the [main README](README.md#getting-the-keys) — that part is identical to macOS.
+For details on the Anthropic key and Notion connection, see the [main
+README](README.md#getting-set-up) — that part is identical to macOS.
 
 ## Troubleshooting
 

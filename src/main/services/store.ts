@@ -5,6 +5,7 @@ export type Provider = 'ollama' | 'anthropic'
 
 interface ConfigSchema {
   notionTokenEnc?: string
+  notionWorkspaceName?: string
   anthropicApiKeyEnc?: string
   provider: Provider
   ollamaModelId: string
@@ -53,6 +54,17 @@ export function setNotionToken(plain: string): void {
 
 export function clearNotionToken(): void {
   store.delete('notionTokenEnc')
+}
+
+// The Notion workspace name is not a secret — it's shown in Settings so a connected user can see
+// which workspace they linked. Stored in the clear (unlike the token).
+export function getNotionWorkspaceName(): string {
+  return store.get('notionWorkspaceName') || ''
+}
+
+export function setNotionWorkspaceName(name: string): void {
+  if (name) store.set('notionWorkspaceName', name)
+  else store.delete('notionWorkspaceName')
 }
 
 export function getAnthropicKey(): string | null {
@@ -132,6 +144,7 @@ export function mapTopicPage(unit: string, topic: string, pageId: string): void 
 // since this is what gets sent over IPC to the renderer.
 export function getSettingsSummary(): {
   notionTokenSet: boolean
+  notionWorkspaceName: string
   anthropicKeySet: boolean
   provider: Provider
   ollamaModelId: string
@@ -140,6 +153,7 @@ export function getSettingsSummary(): {
 } {
   return {
     notionTokenSet: !!store.get('notionTokenEnc'),
+    notionWorkspaceName: getNotionWorkspaceName(),
     anthropicKeySet: !!store.get('anthropicApiKeyEnc'),
     provider: store.get('provider'),
     ollamaModelId: store.get('ollamaModelId'),

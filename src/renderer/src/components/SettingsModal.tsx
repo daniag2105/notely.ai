@@ -124,16 +124,21 @@ function SecretField({
 
 export default function SettingsModal({ open, onClose }: Props): React.JSX.Element | null {
   const [notionTokenSet, setNotionTokenSet] = useState(false)
+  const [notionWorkspaceName, setNotionWorkspaceName] = useState('')
   const [anthropicModelId, setAnthropicModelId] = useState('')
   const [anthropicKeySet, setAnthropicKeySet] = useState(false)
   const [testResult, setTestResult] = useState<{ ok: boolean; error?: string } | null>(null)
   const [testing, setTesting] = useState(false)
   const [llmResult, setLlmResult] = useState<{ ok: boolean; error?: string } | null>(null)
   const [llmTesting, setLlmTesting] = useState(false)
+  const [connecting, setConnecting] = useState(false)
+  const [connectError, setConnectError] = useState('')
+  const [showManualToken, setShowManualToken] = useState(false)
 
   const refresh = async (): Promise<void> => {
     const s = await window.api.settings.get()
     setNotionTokenSet(s.notionTokenSet)
+    setNotionWorkspaceName(s.notionWorkspaceName || '')
     setAnthropicModelId(s.anthropicModelId)
     setAnthropicKeySet(s.anthropicKeySet)
   }
@@ -143,8 +148,27 @@ export default function SettingsModal({ open, onClose }: Props): React.JSX.Eleme
       refresh()
       setTestResult(null)
       setLlmResult(null)
+      setConnectError('')
     }
   }, [open])
+
+  const connectNotion = async (): Promise<void> => {
+    setConnecting(true)
+    setConnectError('')
+    try {
+      const r = await window.api.notion.connect()
+      if (!r.ok) setConnectError(r.error || 'Could not connect to Notion.')
+      await refresh()
+    } finally {
+      setConnecting(false)
+    }
+  }
+
+  const disconnectNotion = async (): Promise<void> => {
+    await window.api.notion.disconnect()
+    setTestResult(null)
+    await refresh()
+  }
 
   const switchAnthropicModel = async (modelId: string): Promise<void> => {
     setAnthropicModelId(modelId)
@@ -297,21 +321,44 @@ export default function SettingsModal({ open, onClose }: Props): React.JSX.Eleme
 
           <div style={{ height: 1, background: T.lineSoft }} />
 
-          <SecretField
-            label="Notion integration token"
-            placeholder="ntn_…"
-            isSet={notionTokenSet}
-            onSave={async (v) => {
-              await window.api.settings.setNotionToken(v)
-              refresh()
-            }}
-            onClear={async () => {
-              await window.api.settings.clearNotionToken()
-              refresh()
-            }}
-            hint="Optional — only needed for “Send to Notion”. Create one at notion.so/my-integrations, then share your unit pages with it from the Notion ••• menu → Connections. Without this, Notely.ai still works as a copy/paste markdown tool."
-            extra={
-              notionTokenSet ? (
+          {/* ---- Notion ---- */}
+          <div>
+            <label style={{ fontSize: 13, fontWeight: 600, color: T.text, display: 'block', marginBottom: 8 }}>
+              Notion <span style={{ color: T.faint, fontWeight: 400 }}>— optional, for “Send to Notion”</span>
+            </label>
+
+            {notionTokenSet ? (
+              <>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 9,
+                    padding: '10px 12px',
+                    borderRadius: 9,
+                    background: T.panelHi,
+                    border: `1px solid ${T.lineSoft}`
+                  }}
+                >
+                  <Check size={15} color={T.teal} style={{ flexShrink: 0 }} />
+                  <div style={{ flex: 1, fontSize: 12.5, color: T.text }}>
+                    Connected{notionWorkspaceName ? <> to <b>{notionWorkspaceName}</b></> : null}
+                  </div>
+                  <button
+                    onClick={disconnectNotion}
+                    style={{
+                      padding: '6px 11px',
+                      borderRadius: 7,
+                      border: `1px solid ${T.lineSoft}`,
+                      background: 'transparent',
+                      color: T.faint,
+                      cursor: 'pointer',
+                      fontSize: 11.5
+                    }}
+                  >
+                    Disconnect
+                  </button>
+                </div>
                 <div style={{ marginTop: 8 }}>
                   <button
                     disabled={testing}
@@ -357,9 +404,86 @@ export default function SettingsModal({ open, onClose }: Props): React.JSX.Eleme
                     </div>
                   )}
                 </div>
-              ) : null
-            }
-          />
+              </>
+            ) : (
+              <>
+                <button
+                  disabled={connecting}
+                  onClick={connectNotion}
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: 9,
+                    border: 'none',
+                    background: T.blue,
+                    color: '#fff',
+                    cursor: connecting ? 'default' : 'pointer',
+                    fontSize: 13,
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8
+                  }}
+                >
+                  {connecting ? <Loader2 size={14} className="spin" /> : null}
+                  {connecting ? 'Waiting for your browser…' : 'Connect Notion'}
+                </button>
+                <p style={{ fontSize: 11, color: T.faint, marginTop: 8, lineHeight: 1.5 }}>
+                  Click Connect, then choose which pages Notely.ai can write to — right inside Notion. No
+                  token to copy, no manual sharing. Without this, Notely.ai still works as a copy/paste
+                  markdown tool.
+                </p>
+                {connectError && (
+                  <div
+                    style={{
+                      marginTop: 6,
+                      fontSize: 11.5,
+                      color: T.danger,
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: 6,
+                      lineHeight: 1.5
+                    }}
+                  >
+                    <AlertTriangle size={13} style={{ marginTop: 1, flexShrink: 0 }} />
+                    {connectError}
+                  </div>
+                )}
+                <button
+                  onClick={() => setShowManualToken((v) => !v)}
+                  style={{
+                    marginTop: 10,
+                    background: 'none',
+                    border: 'none',
+                    color: T.dim,
+                    cursor: 'pointer',
+                    fontSize: 11,
+                    textDecoration: 'underline',
+                    padding: 0
+                  }}
+                >
+                  {showManualToken ? 'Hide' : 'Paste a token instead'}
+                </button>
+                {showManualToken && (
+                  <div style={{ marginTop: 10 }}>
+                    <SecretField
+                      label="Notion integration token"
+                      placeholder="ntn_…"
+                      isSet={false}
+                      onSave={async (v) => {
+                        await window.api.settings.setNotionToken(v)
+                        refresh()
+                      }}
+                      onClear={async () => {
+                        await window.api.settings.clearNotionToken()
+                        refresh()
+                      }}
+                      hint="Advanced: paste an internal integration token from notion.so/my-integrations, then share your pages with it (••• menu → Connections)."
+                    />
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>

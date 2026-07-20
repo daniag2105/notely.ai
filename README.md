@@ -15,7 +15,8 @@ encrypted on your Mac (macOS Keychain) and only ever used to call Anthropic dire
 - **Node.js** (LTS) — install from [nodejs.org](https://nodejs.org) if you don't have it
 - **An Anthropic API key** — from [console.anthropic.com](https://console.anthropic.com) (billed
   by Anthropic per usage; you control the spend)
-- **A Notion integration token** *(optional)* — only needed for "Send to Notion"
+- **A Notion account** *(optional)* — to file notes into Notion; you link it in-app with one click,
+  no token to copy
 
 ## Install
 
@@ -48,24 +49,30 @@ and drag **Notely.ai** into Applications.
 
 1. Open Notely.ai and click **Settings**.
 2. Paste your **Anthropic API key** (`sk-ant-…`). That's all you need to start generating.
-3. *(Optional)* Paste your **Notion integration token** to enable "Send to Notion" — see below.
+3. *(Optional)* Click **Connect Notion** to link your workspace and enable "Send to Notion" — see
+   below.
 4. Close Settings, pick a **unit** and **topic**, drop your slides + transcript, and hit
    **Generate**.
 
-## Getting the keys
+## Getting set up
 
 ### Anthropic API key (required)
 1. Go to [console.anthropic.com](https://console.anthropic.com) → **API Keys** → create a key.
 2. Copy it and paste it into Notely.ai's Settings. It's stored encrypted locally and only ever
    sent to Anthropic's API over HTTPS.
 
-### Notion integration token (optional — for "Send to Notion")
-1. Go to [notion.so/my-integrations](https://www.notion.so/my-integrations) → **New integration** →
-   copy the **Internal Integration Secret** (`ntn_…`).
-2. Paste it into Notely.ai's Settings.
-3. **Important:** in Notion, open the page(s) you want notes filed under, click the **•••** menu →
-   **Connections** → add your integration. Without this sharing step, Notion won't let the app
-   write to your pages (this is the most common setup snag).
+### Connecting Notion (optional — for "Send to Notion")
+In Settings, click **Connect Notion**. Your browser opens, you choose which pages Notely.ai may
+write to — right inside Notion's own picker — and you're done. No token to copy, and no hunting
+through the ••• → Connections menu to share pages one by one.
+
+Prefer to do it by hand? Click **"paste a token instead"** in Settings and use an internal
+integration token from [notion.so/my-integrations](https://www.notion.so/my-integrations) (then
+share your pages with it via the ••• → **Connections** menu).
+
+> **Maintainer note:** the one-click **Connect Notion** button requires a small OAuth backend to be
+> deployed once — see [`server/notion-oauth/README.md`](server/notion-oauth/README.md). Until that's
+> set up, use the "paste a token instead" option.
 
 ## Everyday use
 
@@ -75,8 +82,8 @@ Notes are routed to the unit/topic you selected, creating the pages if needed.
 ## Troubleshooting
 
 - **"unidentified developer"** on launch → right-click the app ▸ **Open** (once).
-- **Notion says it can't find / write the page** → re-check that you shared the page with your
-  integration (the ••• ▸ Connections step above).
+- **Notion says it can't find / write the page** → make sure that page (or one of its parents) was
+  selected when you clicked **Connect Notion**. You can re-run Connect and pick more pages.
 - **Generation errors about the API key** → confirm the key is pasted in Settings and still active
   in the Anthropic console.
 
