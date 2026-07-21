@@ -15,7 +15,9 @@ import {
   FolderOpen,
   Settings as SettingsIcon,
   ExternalLink,
-  Send
+  Send,
+  LogIn,
+  Lock
 } from 'lucide-react'
 import { T } from './theme'
 import { mdToHtml } from './lib/mdToHtml'
@@ -24,6 +26,8 @@ import { publishToNotion, PublishFigure } from './lib/notionPublish'
 import SettingsModal from './components/SettingsModal'
 import NotionPagePicker, { PickerPage } from './components/NotionPagePicker'
 import BatchModal from './components/BatchModal'
+import AuthModal from './components/AuthModal'
+import PaywallModal from './components/PaywallModal'
 
 export type ContentBlock =
   { type: 'text'; text: string } | { type: 'image'; data: string; mediaType: string }
@@ -35,6 +39,30 @@ export interface GenerateOptions {
   depth: Depth
   mode: OutputMode
   custom: string
+}
+
+// Mirrors the backend's account summary (window.api.auth.me()). `unlocked` are UX hints for
+// enabling/disabling controls — the server independently enforces every one of them.
+export interface AccountSummary {
+  email: string
+  plan: 'free' | 'pro'
+  jotsBalance: number
+  freeNotesUsed: number
+  freeFiguresUsed: number
+  limits: { freeNotes: number; freeFigures: number }
+  unlocked: {
+    detailed: boolean
+    custom: boolean
+    opus: boolean
+    batch: boolean
+    figures: boolean
+    notes: boolean
+  }
+}
+
+export interface PaywallInfo {
+  code: 'pro_required' | 'quota_exhausted' | 'figures_exhausted'
+  reasons: string[]
 }
 
 const fileToBase64 = (file: File): Promise<string> =>
@@ -294,19 +322,46 @@ export default function App(): React.JSX.Element {
     if (unitsLoaded) window.api.settings.setUnits(units)
   }, [units, unitsLoaded])
 
-  // First-run onboarding: the Anthropic key is required to generate anything, so surface a
-  // one-time setup banner until it's set (rather than only erroring at generate-time). Assume set
-  // until we've actually checked, to avoid the banner flashing on every launch.
-  const [anthropicKeySet, setAnthropicKeySet] = useState(true)
+  // The signed-in Notely account — plan, Jots, free-tier usage, and the `unlocked` flags that gate
+  // features. Null until checked, or when signed out (then we prompt sign-in). Generation is a
+  // metered server call now, so there's no local API key to set up.
+  const [account, setAccount] = useState<AccountSummary | null>(null)
+  const [accountLoaded, setAccountLoaded] = useState(false)
+  const [authOpen, setAuthOpen] = useState(false)
+  const [paywall, setPaywall] = useState<PaywallInfo | null>(null)
 
-  const refreshSetup = async (): Promise<void> => {
-    const s = await window.api.settings.get()
-    setAnthropicKeySet(s.anthropicKeySet)
+  const refreshAccount = async (): Promise<AccountSummary | null> => {
+    const a = (await window.api.auth.me()) as AccountSummary | null
+    setAccount(a)
+    setAccountLoaded(true)
+    return a
   }
 
   useEffect(() => {
-    refreshSetup()
+    refreshAccount().then((a) => {
+      if (!a) setAuthOpen(true)
+      // Pull this account's Notion connection into the local cache (it lives on the account now,
+      // not the device), so the Settings "Connected" state and Send-to-Notion reflect who's signed in.
+      else window.api.notion.sync()
+    })
   }, [])
+
+  // Returns true if the current account may use a Pro-gated feature; otherwise shows the paywall
+  // (or the sign-in modal) and returns false. Used by the detailed/custom/batch/figures controls.
+  const requireUnlocked = (feature: keyof AccountSummary['unlocked'], reason: string): boolean => {
+    if (!account) {
+      setAuthOpen(true)
+      return false
+    }
+    if (account.unlocked[feature]) return true
+    setPaywall({
+      code: feature === 'figures' ? 'figures_exhausted' : 'pro_required',
+      reasons: [reason]
+    })
+    return false
+  }
+
+  const customLocked = !!account && !account.unlocked.custom
 
   const [slideMode, setSlideMode] = useState('upload')
   const [slideText, setSlideText] = useState('')
@@ -400,6 +455,10 @@ export default function App(): React.JSX.Element {
   }
 
   const run = async (): Promise<void> => {
+    if (!account) {
+      setAuthOpen(true)
+      return
+    }
     setError('')
     setOut(null)
     setProgress('')
@@ -448,7 +507,7 @@ export default function App(): React.JSX.Element {
         })
       }
 
-      const result = await window.api.notes.generate(
+      const result = (await window.api.notes.generate(
         {
           unit,
           topic,
@@ -457,9 +516,23 @@ export default function App(): React.JSX.Element {
           hasFigures: figures.length > 0
         },
         (partial: string) => setProgress(progressTail(partial))
-      )
+      )) as
+        | { title: string; notes: string; verified?: boolean }
+        | { paywall: PaywallInfo }
+        | { authRequired: true }
+
+      if ('authRequired' in result) {
+        setAuthOpen(true)
+        return
+      }
+      if ('paywall' in result) {
+        setPaywall(result.paywall)
+        return
+      }
       setOut(result)
       setTab('markdown')
+      // Refresh so the "free notes left" / Jots count in the header reflects this generation.
+      refreshAccount()
     } catch (e) {
       setError((e as Error).message || 'Something went wrong generating the notes.')
     } finally {
@@ -590,9 +663,41 @@ export default function App(): React.JSX.Element {
               routed straight to the right unit and topic.
             </p>
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {account && (
+              <button
+                onClick={() => setSettingsOpen(true)}
+                title={account.email}
+                style={{
+                  padding: '8px 11px',
+                  borderRadius: 9,
+                  border: `1px solid ${account.plan === 'pro' ? T.blue : T.lineSoft}`,
+                  background: account.plan === 'pro' ? T.blueBg : T.panel,
+                  color: account.plan === 'pro' ? T.blue : T.dim,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  fontSize: 12,
+                  fontWeight: 600
+                }}
+              >
+                {account.plan === 'pro' ? (
+                  <>
+                    <Sparkles size={13} /> Pro
+                  </>
+                ) : (
+                  <>
+                    {Math.max(account.limits.freeNotes - account.freeNotesUsed, 0)} free left
+                    {account.jotsBalance > 0 ? ` · ${account.jotsBalance} Jots` : ''}
+                  </>
+                )}
+              </button>
+            )}
             <button
-              onClick={() => setBatchOpen(true)}
+              onClick={() => {
+                if (requireUnlocked('batch', 'batch')) setBatchOpen(true)
+              }}
               style={{
                 padding: '9px 12px',
                 borderRadius: 9,
@@ -607,6 +712,7 @@ export default function App(): React.JSX.Element {
               }}
             >
               <FolderOpen size={15} /> Batch import
+              {account && !account.unlocked.batch && <Lock size={12} style={{ marginLeft: 2 }} />}
             </button>
             <button
               onClick={() => setSettingsOpen(true)}
@@ -628,7 +734,7 @@ export default function App(): React.JSX.Element {
           </div>
         </div>
 
-        {!anthropicKeySet && (
+        {accountLoaded && !account && (
           <div
             style={{
               display: 'flex',
@@ -641,13 +747,13 @@ export default function App(): React.JSX.Element {
               marginBottom: 18
             }}
           >
-            <AlertTriangle size={18} color={T.blue} style={{ flexShrink: 0 }} />
+            <LogIn size={18} color={T.blue} style={{ flexShrink: 0 }} />
             <div style={{ flex: 1, fontSize: 13, color: T.text, lineHeight: 1.5 }}>
-              <b>One-time setup:</b> add your Anthropic API key to start generating notes. Get one
-              at <b>console.anthropic.com</b> — it stays encrypted on this Mac.
+              <b>Sign in to start:</b> create a free Notely.ai account — your first 5 notes are on
+              us.
             </div>
             <button
-              onClick={() => setSettingsOpen(true)}
+              onClick={() => setAuthOpen(true)}
               style={{
                 padding: '9px 14px',
                 borderRadius: 9,
@@ -660,7 +766,7 @@ export default function App(): React.JSX.Element {
                 flexShrink: 0
               }}
             >
-              Open Settings
+              Sign in
             </button>
           </div>
         )}
@@ -940,26 +1046,40 @@ export default function App(): React.JSX.Element {
                     border: `1px solid ${T.lineSoft}`
                   }}
                 >
-                  {(['concise', 'standard', 'detailed'] as Depth[]).map((d) => (
-                    <button
-                      key={d}
-                      onClick={() => setDepth(d)}
-                      style={{
-                        flex: 1,
-                        padding: '6px',
-                        borderRadius: 6,
-                        fontSize: 12,
-                        cursor: 'pointer',
-                        border: 'none',
-                        textTransform: 'capitalize',
-                        fontWeight: 600,
-                        background: depth === d ? T.blue : 'transparent',
-                        color: depth === d ? '#fff' : T.dim
-                      }}
-                    >
-                      {d}
-                    </button>
-                  ))}
+                  {(['concise', 'standard', 'detailed'] as Depth[]).map((d) => {
+                    const locked = d === 'detailed' && !!account && !account.unlocked.detailed
+                    return (
+                      <button
+                        key={d}
+                        onClick={() => {
+                          if (d === 'detailed') {
+                            if (requireUnlocked('detailed', 'detailed')) setDepth('detailed')
+                          } else {
+                            setDepth(d)
+                          }
+                        }}
+                        style={{
+                          flex: 1,
+                          padding: '6px',
+                          borderRadius: 6,
+                          fontSize: 12,
+                          cursor: 'pointer',
+                          border: 'none',
+                          textTransform: 'capitalize',
+                          fontWeight: 600,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 4,
+                          background: depth === d ? T.blue : 'transparent',
+                          color: depth === d ? '#fff' : T.dim
+                        }}
+                      >
+                        {d}
+                        {locked && <Lock size={11} />}
+                      </button>
+                    )
+                  })}
                 </div>
               )}
               <div style={{ display: 'flex', gap: 16, marginTop: 12 }}>
@@ -982,7 +1102,13 @@ export default function App(): React.JSX.Element {
                     }}
                   >
                     <span
-                      onClick={() => set(!val)}
+                      onClick={() => {
+                        if (!val) {
+                          if (requireUnlocked('figures', 'figures')) set(true)
+                        } else {
+                          set(false)
+                        }
+                      }}
                       style={{
                         width: 34,
                         height: 19,
@@ -1006,9 +1132,28 @@ export default function App(): React.JSX.Element {
                       />
                     </span>
                     {lbl}
+                    {account && !account.unlocked.figures && <Lock size={11} />}
                   </label>
                 ))}
               </div>
+              {account && account.plan !== 'pro' && (
+                <p
+                  style={{
+                    fontSize: 11,
+                    color: T.amber,
+                    margin: '9px 0 0',
+                    lineHeight: 1.5,
+                    display: 'flex',
+                    gap: 6,
+                    alignItems: 'flex-start'
+                  }}
+                >
+                  <AlertTriangle size={12} style={{ marginTop: 1, flexShrink: 0 }} />
+                  {account.freeFiguresUsed < account.limits.freeFigures
+                    ? `You get ${account.limits.freeFigures} free slide-figure extraction — use it wisely.`
+                    : 'Free slide-figure extraction used — Pro only from here.'}
+                </p>
+              )}
               {addFigures && (
                 <p style={{ fontSize: 11, color: T.faint, margin: '9px 0 0', lineHeight: 1.5 }}>
                   Pulls diagrams &amp; photos out of PDF slides and embeds the relevant ones inline
@@ -1021,17 +1166,41 @@ export default function App(): React.JSX.Element {
                     fontSize: 11,
                     letterSpacing: '.04em',
                     color: T.faint,
-                    display: 'block',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 5,
                     marginBottom: 6
                   }}
                 >
                   Custom instructions
+                  {customLocked && (
+                    <span
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 3,
+                        color: T.blue,
+                        fontWeight: 600
+                      }}
+                    >
+                      <Lock size={10} /> Pro
+                    </span>
+                  )}
                 </label>
                 <textarea
-                  value={customInstructions}
+                  value={customLocked ? '' : customInstructions}
+                  readOnly={customLocked}
+                  onMouseDown={(e) => {
+                    if (customLocked) {
+                      e.preventDefault()
+                      requireUnlocked('custom', 'custom')
+                    }
+                  }}
                   onChange={(e) => setCustomInstructions(e.target.value)}
                   placeholder={
-                    'Anything specific you want emphasized, skipped, or handled differently — e.g. "focus more on the derivation, skip the worked example"…'
+                    customLocked
+                      ? 'Custom instructions are a Pro feature — upgrade to tailor how notes are written.'
+                      : 'Anything specific you want emphasized, skipped, or handled differently — e.g. "focus more on the derivation, skip the worked example"…'
                   }
                   style={{
                     width: '100%',
@@ -1045,7 +1214,9 @@ export default function App(): React.JSX.Element {
                     fontSize: 12,
                     lineHeight: 1.5,
                     fontFamily: 'ui-monospace, Menlo, monospace',
-                    outline: 'none'
+                    outline: 'none',
+                    opacity: customLocked ? 0.6 : 1,
+                    cursor: customLocked ? 'pointer' : 'text'
                   }}
                 />
               </div>
@@ -1493,9 +1664,20 @@ export default function App(): React.JSX.Element {
 
       <SettingsModal
         open={settingsOpen}
+        account={account}
         onClose={() => {
           setSettingsOpen(false)
-          refreshSetup()
+          refreshAccount()
+        }}
+        onSignOut={async () => {
+          await window.api.auth.logout()
+          setSettingsOpen(false)
+          setAccount(null)
+          setAuthOpen(true)
+        }}
+        onUpgrade={() => {
+          setSettingsOpen(false)
+          setPaywall({ code: 'pro_required', reasons: ['opus'] })
         }}
       />
 
@@ -1526,6 +1708,18 @@ export default function App(): React.JSX.Element {
           setPicker(null)
         }}
       />
+
+      <AuthModal
+        open={authOpen}
+        dismissable={!!account}
+        onClose={() => setAuthOpen(false)}
+        onAuthed={() => {
+          setAuthOpen(false)
+          refreshAccount()
+        }}
+      />
+
+      <PaywallModal info={paywall} onClose={() => setPaywall(null)} />
     </div>
   )
 }

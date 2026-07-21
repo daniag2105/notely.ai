@@ -3,6 +3,7 @@ import { AddressInfo } from 'net'
 import { randomBytes } from 'crypto'
 import { shell } from 'electron'
 import * as store from './store'
+import * as backend from './backend'
 import { NOTION_CLIENT_ID, NOTION_OAUTH_CALLBACK_URL, isNotionOAuthConfigured } from '../config'
 
 // Desktop OAuth for Notion (RFC 8252 loopback). The app opens the system browser to Notion's
@@ -32,7 +33,10 @@ export function connectNotion(): Promise<ConnectResult> {
     })
   }
   if (inFlight) {
-    return Promise.resolve({ ok: false, error: 'A Notion connection is already in progress — finish it in your browser.' })
+    return Promise.resolve({
+      ok: false,
+      error: 'A Notion connection is already in progress — finish it in your browser.'
+    })
   }
   inFlight = true
 
@@ -50,7 +54,7 @@ export function connectNotion(): Promise<ConnectResult> {
       resolve(result)
     }
 
-    const server = http.createServer((req, res) => {
+    const server = http.createServer(async (req, res) => {
       const reqUrl = new URL(req.url || '/', 'http://127.0.0.1')
       if (reqUrl.pathname !== '/notion-callback') {
         res.writeHead(404).end('Not found')
@@ -79,17 +83,30 @@ export function connectNotion(): Promise<ConnectResult> {
       }
       const token = reqUrl.searchParams.get('access_token')
       if (!token) {
-        done(400, 'No access token was received. Please try again.', { ok: false, error: 'No access token received from Notion.' })
+        done(400, 'No access token was received. Please try again.', {
+          ok: false,
+          error: 'No access token received from Notion.'
+        })
         return
       }
 
       const workspaceName = reqUrl.searchParams.get('workspace_name') || ''
       store.setNotionToken(token)
       store.setNotionWorkspaceName(workspaceName)
-      done(200, '✓ Connected! You can close this tab and return to Notely.ai.', { ok: true, workspaceName })
+      // Persist to the signed-in account so this Notion connection follows the user, not the device.
+      await backend.saveNotion(token, workspaceName)
+      done(200, '✓ Connected! You can close this tab and return to Notely.ai.', {
+        ok: true,
+        workspaceName
+      })
     })
 
-    server.on('error', (e) => finish({ ok: false, error: `Couldn't start the local callback server (${(e as Error).message}).` }))
+    server.on('error', (e) =>
+      finish({
+        ok: false,
+        error: `Couldn't start the local callback server (${(e as Error).message}).`
+      })
+    )
 
     server.listen(0, '127.0.0.1', () => {
       const addr = server.address() as AddressInfo | null

@@ -95,9 +95,17 @@ async function buildContentBlocks(rootPath: string, item: BatchItem): Promise<Co
 function StatusBadge({ status }: { status: ItemStatus }): React.JSX.Element {
   const map: Record<ItemStatus, { icon: React.ReactNode; label: string; color: string }> = {
     pending: { icon: null, label: 'Pending', color: T.faint },
-    generating: { icon: <Loader2 size={12} className="spin" />, label: 'Generating…', color: T.blue },
+    generating: {
+      icon: <Loader2 size={12} className="spin" />,
+      label: 'Generating…',
+      color: T.blue
+    },
     ready: { icon: <Check size={12} />, label: 'Ready', color: T.teal },
-    publishing: { icon: <Loader2 size={12} className="spin" />, label: 'Publishing…', color: T.blue },
+    publishing: {
+      icon: <Loader2 size={12} className="spin" />,
+      label: 'Publishing…',
+      color: T.blue
+    },
     published: { icon: <Check size={12} />, label: 'Published', color: T.teal },
     error: { icon: <AlertTriangle size={12} />, label: 'Error', color: T.danger }
   }
@@ -152,7 +160,10 @@ export default function BatchModal({
       const result = await window.api.files.scanFolder(picked)
       setItems(
         result.matches.map(
-          (m: { dirPath: string; slidePath: string; transcriptPath: string; topicGuess: string }, i: number) => ({
+          (
+            m: { dirPath: string; slidePath: string; transcriptPath: string; topicGuess: string },
+            i: number
+          ) => ({
             id: `${i}:${m.slidePath}`,
             dirPath: m.dirPath,
             slidePath: m.slidePath,
@@ -185,11 +196,17 @@ export default function BatchModal({
         updateItem(item.id, { status: 'generating', error: undefined })
         try {
           const blocks = await buildContentBlocks(rootPath, item)
-          const result = await window.api.notes.generate(
-            { unit, topic: item.topic, options, sourceBlocks: blocks },
+          const raw = (await window.api.notes.generate(
+            { unit, topic: item.topic, options, sourceBlocks: blocks, isBatch: true },
             () => {}
-          )
-          updateItem(item.id, { status: 'ready', result })
+          )) as { title: string; notes: string } | { paywall: unknown } | { authRequired: boolean }
+          if ('authRequired' in raw) {
+            updateItem(item.id, { status: 'error', error: 'Please sign in again.' })
+          } else if ('paywall' in raw) {
+            updateItem(item.id, { status: 'error', error: 'Batch import requires Notely.ai Pro.' })
+          } else {
+            updateItem(item.id, { status: 'ready', result: raw })
+          }
         } catch (e) {
           updateItem(item.id, { status: 'error', error: (e as Error).message })
         }
@@ -245,11 +262,17 @@ export default function BatchModal({
       updateItem(id, { status: 'generating', error: undefined })
       try {
         const blocks = await buildContentBlocks(rootPath, item)
-        const result = await window.api.notes.generate(
-          { unit, topic: item.topic, options, sourceBlocks: blocks },
+        const raw = (await window.api.notes.generate(
+          { unit, topic: item.topic, options, sourceBlocks: blocks, isBatch: true },
           () => {}
-        )
-        updateItem(id, { status: 'ready', result })
+        )) as { title: string; notes: string } | { paywall: unknown } | { authRequired: boolean }
+        if ('authRequired' in raw) {
+          updateItem(id, { status: 'error', error: 'Please sign in again.' })
+        } else if ('paywall' in raw) {
+          updateItem(id, { status: 'error', error: 'Batch import requires Notely.ai Pro.' })
+        } else {
+          updateItem(id, { status: 'ready', result: raw })
+        }
       } catch (e) {
         updateItem(id, { status: 'error', error: (e as Error).message })
       }
@@ -291,12 +314,14 @@ export default function BatchModal({
           }}
         >
           <div>
-            <div style={{ fontFamily: 'Georgia, serif', fontSize: 16, color: T.text, fontWeight: 600 }}>
+            <div
+              style={{ fontFamily: 'Georgia, serif', fontSize: 16, color: T.text, fontWeight: 600 }}
+            >
               Batch import
             </div>
             <div style={{ fontSize: 12, color: T.dim, marginTop: 4, lineHeight: 1.5 }}>
-              Drop a folder of slide sets + transcripts for one unit and generate a semester&rsquo;s notes
-              in one run.
+              Drop a folder of slide sets + transcripts for one unit and generate a semester&rsquo;s
+              notes in one run.
             </div>
           </div>
           <button
@@ -314,7 +339,16 @@ export default function BatchModal({
           </button>
         </div>
 
-        <div style={{ flex: 1, overflow: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div
+          style={{
+            flex: 1,
+            overflow: 'auto',
+            padding: 16,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 14
+          }}
+        >
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             <button
               onClick={pickFolder}
@@ -352,7 +386,14 @@ export default function BatchModal({
 
           {rootPath && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 11, letterSpacing: '.05em', textTransform: 'uppercase', color: T.faint }}>
+              <span
+                style={{
+                  fontSize: 11,
+                  letterSpacing: '.05em',
+                  textTransform: 'uppercase',
+                  color: T.faint
+                }}
+              >
                 Unit
               </span>
               <select
@@ -377,7 +418,9 @@ export default function BatchModal({
             </div>
           )}
 
-          {scanError && <div style={{ color: T.danger, fontSize: 12.5, lineHeight: 1.5 }}>{scanError}</div>}
+          {scanError && (
+            <div style={{ color: T.danger, fontSize: 12.5, lineHeight: 1.5 }}>{scanError}</div>
+          )}
 
           {items.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -459,12 +502,23 @@ export default function BatchModal({
 
           {unmatched.length > 0 && (
             <div style={{ fontSize: 11.5, color: T.faint, lineHeight: 1.6 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: T.dim, marginBottom: 3 }}>
-                <AlertTriangle size={12} /> {unmatched.length} file{unmatched.length === 1 ? '' : 's'} couldn&rsquo;t
-                be paired (skipped):
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  color: T.dim,
+                  marginBottom: 3
+                }}
+              >
+                <AlertTriangle size={12} /> {unmatched.length} file
+                {unmatched.length === 1 ? '' : 's'} couldn&rsquo;t be paired (skipped):
               </div>
               {unmatched.map((f) => (
-                <div key={f} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <div
+                  key={f}
+                  style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                >
                   {fileName(f)}
                 </div>
               ))}
@@ -473,7 +527,15 @@ export default function BatchModal({
         </div>
 
         {items.length > 0 && (
-          <div style={{ padding: 14, borderTop: `1px solid ${T.lineSoft}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div
+            style={{
+              padding: 14,
+              borderTop: `1px solid ${T.lineSoft}`,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10
+            }}
+          >
             <span style={{ fontSize: 11.5, color: T.faint, flex: 1 }}>
               {includedCount} queued · {readyCount} ready · {publishedCount} published
             </span>

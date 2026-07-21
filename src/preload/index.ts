@@ -7,15 +7,17 @@ const api = {
     clearNotionToken: () => ipcRenderer.invoke('settings:clearNotionToken'),
     getUnits: () => ipcRenderer.invoke('settings:getUnits'),
     setUnits: (units: string[]) => ipcRenderer.invoke('settings:setUnits', units),
-    setAnthropicKey: (key: string) => ipcRenderer.invoke('settings:setAnthropicKey', key),
-    clearAnthropicKey: () => ipcRenderer.invoke('settings:clearAnthropicKey'),
     setProvider: (provider: 'ollama' | 'anthropic') =>
       ipcRenderer.invoke('settings:setProvider', provider),
     setAnthropicModelId: (modelId: string) =>
       ipcRenderer.invoke('settings:setAnthropicModelId', modelId)
   },
-  llm: {
-    checkConnection: () => ipcRenderer.invoke('llm:checkConnection')
+  auth: {
+    register: (email: string, password: string) =>
+      ipcRenderer.invoke('auth:register', email, password),
+    login: (email: string, password: string) => ipcRenderer.invoke('auth:login', email, password),
+    logout: () => ipcRenderer.invoke('auth:logout'),
+    me: () => ipcRenderer.invoke('auth:me')
   },
   notes: {
     generate: (payload: unknown, onProgress: (fullText: string) => void) => {
@@ -37,6 +39,7 @@ const api = {
     connect: (): Promise<{ ok: boolean; workspaceName?: string; error?: string }> =>
       ipcRenderer.invoke('notion:connect'),
     disconnect: () => ipcRenderer.invoke('notion:disconnect'),
+    sync: () => ipcRenderer.invoke('notion:sync'),
     testConnection: () => ipcRenderer.invoke('notion:testConnection'),
     searchTopLevelPages: (query: string) => ipcRenderer.invoke('notion:searchTopLevelPages', query),
     listChildPages: (parentPageId: string) =>

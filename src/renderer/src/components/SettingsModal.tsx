@@ -1,10 +1,25 @@
 import React, { useEffect, useState } from 'react'
-import { X, Check, Loader2, KeyRound, AlertTriangle, Cpu } from 'lucide-react'
+import {
+  X,
+  Check,
+  Loader2,
+  KeyRound,
+  AlertTriangle,
+  Cpu,
+  Lock,
+  Sparkles,
+  LogOut,
+  User
+} from 'lucide-react'
 import { T } from '../theme'
+import type { AccountSummary } from '../App'
 
 interface Props {
   open: boolean
   onClose: () => void
+  account: AccountSummary | null
+  onSignOut: () => void
+  onUpgrade: () => void
 }
 
 const ANTHROPIC_MODELS = [
@@ -122,32 +137,35 @@ function SecretField({
   )
 }
 
-export default function SettingsModal({ open, onClose }: Props): React.JSX.Element | null {
+export default function SettingsModal({
+  open,
+  onClose,
+  account,
+  onSignOut,
+  onUpgrade
+}: Props): React.JSX.Element | null {
   const [notionTokenSet, setNotionTokenSet] = useState(false)
   const [notionWorkspaceName, setNotionWorkspaceName] = useState('')
   const [anthropicModelId, setAnthropicModelId] = useState('')
-  const [anthropicKeySet, setAnthropicKeySet] = useState(false)
   const [testResult, setTestResult] = useState<{ ok: boolean; error?: string } | null>(null)
   const [testing, setTesting] = useState(false)
-  const [llmResult, setLlmResult] = useState<{ ok: boolean; error?: string } | null>(null)
-  const [llmTesting, setLlmTesting] = useState(false)
   const [connecting, setConnecting] = useState(false)
   const [connectError, setConnectError] = useState('')
   const [showManualToken, setShowManualToken] = useState(false)
+
+  const isPro = account?.plan === 'pro'
 
   const refresh = async (): Promise<void> => {
     const s = await window.api.settings.get()
     setNotionTokenSet(s.notionTokenSet)
     setNotionWorkspaceName(s.notionWorkspaceName || '')
     setAnthropicModelId(s.anthropicModelId)
-    setAnthropicKeySet(s.anthropicKeySet)
   }
 
   useEffect(() => {
     if (open) {
       refresh()
       setTestResult(null)
-      setLlmResult(null)
       setConnectError('')
     }
   }, [open])
@@ -171,6 +189,11 @@ export default function SettingsModal({ open, onClose }: Props): React.JSX.Eleme
   }
 
   const switchAnthropicModel = async (modelId: string): Promise<void> => {
+    // Opus is a Pro-only model — the server enforces this too, but block the switch here for clarity.
+    if (modelId === 'claude-opus-4-8' && !isPro) {
+      onUpgrade()
+      return
+    }
     setAnthropicModelId(modelId)
     await window.api.settings.setAnthropicModelId(modelId)
   }
@@ -199,10 +222,19 @@ export default function SettingsModal({ open, onClose }: Props): React.JSX.Eleme
           padding: 20
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 16
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <KeyRound size={17} color={T.blue} />
-            <span style={{ fontFamily: 'Georgia, serif', fontSize: 17, color: T.text, fontWeight: 600 }}>
+            <span
+              style={{ fontFamily: 'Georgia, serif', fontSize: 17, color: T.text, fontWeight: 600 }}
+            >
               Settings
             </span>
           </div>
@@ -215,10 +247,122 @@ export default function SettingsModal({ open, onClose }: Props): React.JSX.Eleme
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+          {/* ---- Account ---- */}
+          {account && (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <User size={15} color={T.blue} />
+                <label style={{ fontSize: 13, fontWeight: 600, color: T.text }}>Account</label>
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '11px 12px',
+                  borderRadius: 9,
+                  background: T.panelHi,
+                  border: `1px solid ${T.lineSoft}`
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: 12.5,
+                      color: T.text,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    {account.email}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 11.5,
+                      color: T.dim,
+                      marginTop: 3,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6
+                    }}
+                  >
+                    {isPro ? (
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          color: T.blue,
+                          fontWeight: 600
+                        }}
+                      >
+                        <Sparkles size={11} /> Pro
+                      </span>
+                    ) : (
+                      <>
+                        <span>
+                          {Math.max(account.limits.freeNotes - account.freeNotesUsed, 0)} of{' '}
+                          {account.limits.freeNotes} free notes left
+                        </span>
+                        {account.jotsBalance > 0 && <span>· {account.jotsBalance} Jots</span>}
+                      </>
+                    )}
+                  </div>
+                </div>
+                <button
+                  onClick={onSignOut}
+                  style={{
+                    padding: '7px 11px',
+                    borderRadius: 7,
+                    border: `1px solid ${T.lineSoft}`,
+                    background: 'transparent',
+                    color: T.faint,
+                    cursor: 'pointer',
+                    fontSize: 11.5,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 5
+                  }}
+                >
+                  <LogOut size={12} /> Sign out
+                </button>
+              </div>
+              {!isPro && (
+                <button
+                  onClick={onUpgrade}
+                  style={{
+                    marginTop: 8,
+                    width: '100%',
+                    padding: '9px',
+                    borderRadius: 8,
+                    border: 'none',
+                    background: T.blue,
+                    color: '#fff',
+                    cursor: 'pointer',
+                    fontSize: 12.5,
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 7
+                  }}
+                >
+                  <Sparkles size={13} /> Upgrade to Pro
+                </button>
+              )}
+            </div>
+          )}
+
+          {account && <div style={{ height: 1, background: T.lineSoft }} />}
+
+          {/* ---- Generation model ---- */}
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
               <Cpu size={15} color={T.blue} />
-              <label style={{ fontSize: 13, fontWeight: 600, color: T.text }}>Generation (Claude)</label>
+              <label style={{ fontSize: 13, fontWeight: 600, color: T.text }}>
+                Generation model
+              </label>
             </div>
 
             <div
@@ -229,102 +373,60 @@ export default function SettingsModal({ open, onClose }: Props): React.JSX.Eleme
                 padding: 3,
                 borderRadius: 9,
                 border: `1px solid ${T.lineSoft}`,
-                marginBottom: 12
+                marginBottom: 10
               }}
             >
-              {ANTHROPIC_MODELS.map((m) => (
-                <button
-                  key={m.id}
-                  onClick={() => switchAnthropicModel(m.id)}
-                  style={{
-                    flex: 1,
-                    padding: '6px',
-                    borderRadius: 6,
-                    fontSize: 12,
-                    cursor: 'pointer',
-                    border: 'none',
-                    fontWeight: 600,
-                    background: anthropicModelId === m.id ? T.blue : 'transparent',
-                    color: anthropicModelId === m.id ? '#fff' : T.dim
-                  }}
-                >
-                  {m.label}
-                </button>
-              ))}
+              {ANTHROPIC_MODELS.map((m) => {
+                const locked = m.id === 'claude-opus-4-8' && !isPro
+                return (
+                  <button
+                    key={m.id}
+                    onClick={() => switchAnthropicModel(m.id)}
+                    style={{
+                      flex: 1,
+                      padding: '6px',
+                      borderRadius: 6,
+                      fontSize: 12,
+                      cursor: 'pointer',
+                      border: 'none',
+                      fontWeight: 600,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 4,
+                      background: anthropicModelId === m.id ? T.blue : 'transparent',
+                      color: anthropicModelId === m.id ? '#fff' : T.dim
+                    }}
+                  >
+                    {m.label}
+                    {locked && <Lock size={11} />}
+                  </button>
+                )
+              })}
             </div>
-            <SecretField
-              label="Anthropic API key"
-              placeholder="sk-ant-…"
-              isSet={anthropicKeySet}
-              onSave={async (v) => {
-                await window.api.settings.setAnthropicKey(v)
-                refresh()
-              }}
-              onClear={async () => {
-                await window.api.settings.clearAnthropicKey()
-                refresh()
-              }}
-              hint={`Required — Notely.ai uses Claude to write your notes. Create a key at console.anthropic.com (billed by Anthropic per their usage pricing). Stored encrypted locally via macOS Keychain, the same way your Notion token is — it only ever leaves this app to call Anthropic's API directly over HTTPS.`}
-            />
-
-            <div style={{ marginTop: 8 }}>
-              <button
-                disabled={llmTesting}
-                onClick={async () => {
-                  setLlmTesting(true)
-                  setLlmResult(null)
-                  try {
-                    const r = await window.api.llm.checkConnection()
-                    setLlmResult(r)
-                  } finally {
-                    setLlmTesting(false)
-                  }
-                }}
-                style={{
-                  padding: '6px 11px',
-                  borderRadius: 7,
-                  border: `1px solid ${T.lineSoft}`,
-                  background: T.panelHi,
-                  color: T.dim,
-                  cursor: 'pointer',
-                  fontSize: 11.5,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6
-                }}
-              >
-                {llmTesting ? <Loader2 size={12} className="spin" /> : null}
-                Test connection
-              </button>
-              {llmResult && (
-                <div
-                  style={{
-                    marginTop: 8,
-                    fontSize: 11.5,
-                    color: llmResult.ok ? T.teal : T.danger,
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: 6,
-                    lineHeight: 1.5
-                  }}
-                >
-                  {llmResult.ok ? (
-                    <Check size={13} style={{ marginTop: 1, flexShrink: 0 }} />
-                  ) : (
-                    <AlertTriangle size={13} style={{ marginTop: 1, flexShrink: 0 }} />
-                  )}
-                  {llmResult.ok ? 'Connected' : llmResult.error}
-                </div>
-              )}
-            </div>
+            <p style={{ fontSize: 11, color: T.faint, margin: 0, lineHeight: 1.5 }}>
+              Notes are generated on Notely.ai&rsquo;s servers — no API key needed.
+              {!isPro ? ' Opus is a Pro model.' : ''}
+            </p>
           </div>
 
           <div style={{ height: 1, background: T.lineSoft }} />
 
           {/* ---- Notion ---- */}
           <div>
-            <label style={{ fontSize: 13, fontWeight: 600, color: T.text, display: 'block', marginBottom: 8 }}>
-              Notion <span style={{ color: T.faint, fontWeight: 400 }}>— optional, for “Send to Notion”</span>
+            <label
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: T.text,
+                display: 'block',
+                marginBottom: 8
+              }}
+            >
+              Notion{' '}
+              <span style={{ color: T.faint, fontWeight: 400 }}>
+                — optional, for “Send to Notion”
+              </span>
             </label>
 
             {notionTokenSet ? (
@@ -342,7 +444,13 @@ export default function SettingsModal({ open, onClose }: Props): React.JSX.Eleme
                 >
                   <Check size={15} color={T.teal} style={{ flexShrink: 0 }} />
                   <div style={{ flex: 1, fontSize: 12.5, color: T.text }}>
-                    Connected{notionWorkspaceName ? <> to <b>{notionWorkspaceName}</b></> : null}
+                    Connected
+                    {notionWorkspaceName ? (
+                      <>
+                        {' '}
+                        to <b>{notionWorkspaceName}</b>
+                      </>
+                    ) : null}
                   </div>
                   <button
                     onClick={disconnectNotion}
@@ -428,9 +536,9 @@ export default function SettingsModal({ open, onClose }: Props): React.JSX.Eleme
                   {connecting ? 'Waiting for your browser…' : 'Connect Notion'}
                 </button>
                 <p style={{ fontSize: 11, color: T.faint, marginTop: 8, lineHeight: 1.5 }}>
-                  Click Connect, then choose which pages Notely.ai can write to — right inside Notion. No
-                  token to copy, no manual sharing. Without this, Notely.ai still works as a copy/paste
-                  markdown tool.
+                  Click Connect, then choose which pages Notely.ai can write to — right inside
+                  Notion. No token to copy, no manual sharing. Without this, Notely.ai still works
+                  as a copy/paste markdown tool.
                 </p>
                 {connectError && (
                   <div

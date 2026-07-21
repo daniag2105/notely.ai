@@ -6,7 +6,9 @@ export type Provider = 'ollama' | 'anthropic'
 interface ConfigSchema {
   notionTokenEnc?: string
   notionWorkspaceName?: string
-  anthropicApiKeyEnc?: string
+  // Bearer token for the Notely backend account (accounts + metered generation live server-side
+  // now; the app no longer holds a per-user Anthropic key). Encrypted at rest like the Notion token.
+  authTokenEnc?: string
   provider: Provider
   ollamaModelId: string
   anthropicModelId: string
@@ -67,17 +69,20 @@ export function setNotionWorkspaceName(name: string): void {
   else store.delete('notionWorkspaceName')
 }
 
-export function getAnthropicKey(): string | null {
-  const enc = store.get('anthropicApiKeyEnc')
+// The Notely backend account token — the app's single credential now that generation is a
+// server-side, metered call rather than a local BYO-key call. Stored encrypted, decrypted only to
+// attach as a Bearer header on outbound backend requests (see services/backend.ts).
+export function getAuthToken(): string | null {
+  const enc = store.get('authTokenEnc')
   return enc ? decrypt(enc) : null
 }
 
-export function setAnthropicKey(plain: string): void {
-  store.set('anthropicApiKeyEnc', encrypt(plain))
+export function setAuthToken(plain: string): void {
+  store.set('authTokenEnc', encrypt(plain))
 }
 
-export function clearAnthropicKey(): void {
-  store.delete('anthropicApiKeyEnc')
+export function clearAuthToken(): void {
+  store.delete('authTokenEnc')
 }
 
 export function getProvider(): Provider {
@@ -145,7 +150,6 @@ export function mapTopicPage(unit: string, topic: string, pageId: string): void 
 export function getSettingsSummary(): {
   notionTokenSet: boolean
   notionWorkspaceName: string
-  anthropicKeySet: boolean
   provider: Provider
   ollamaModelId: string
   anthropicModelId: string
@@ -154,7 +158,6 @@ export function getSettingsSummary(): {
   return {
     notionTokenSet: !!store.get('notionTokenEnc'),
     notionWorkspaceName: getNotionWorkspaceName(),
-    anthropicKeySet: !!store.get('anthropicApiKeyEnc'),
     provider: store.get('provider'),
     ollamaModelId: store.get('ollamaModelId'),
     anthropicModelId: store.get('anthropicModelId'),

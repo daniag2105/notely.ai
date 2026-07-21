@@ -1,11 +1,14 @@
 import { ipcMain } from 'electron'
 import * as store from '../services/store'
+import * as backend from '../services/backend'
 
 export function registerSettingsIpc(): void {
   ipcMain.handle('settings:get', () => store.getSettingsSummary())
 
-  ipcMain.handle('settings:setNotionToken', (_e, token: string) => {
+  ipcMain.handle('settings:setNotionToken', async (_e, token: string) => {
     store.setNotionToken(token)
+    // Persist to the signed-in account so a pasted token follows the user across devices.
+    await backend.saveNotion(token, '')
     return { ok: true }
   })
 
@@ -17,15 +20,6 @@ export function registerSettingsIpc(): void {
 
   ipcMain.handle('settings:setUnits', (_e, units: string[]) => {
     store.setUnits(units)
-  })
-
-  ipcMain.handle('settings:setAnthropicKey', (_e, key: string) => {
-    store.setAnthropicKey(key)
-    return { ok: true }
-  })
-
-  ipcMain.handle('settings:clearAnthropicKey', () => {
-    store.clearAnthropicKey()
   })
 
   ipcMain.handle('settings:setProvider', (_e, provider: store.Provider) => {

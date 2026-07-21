@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron'
 import * as store from '../services/store'
 import * as notion from '../services/notion'
+import * as backend from '../services/backend'
 import { connectNotion, disconnectNotion } from '../services/notionOauth'
 import { markdownToBlocks } from '../services/markdownToBlocks'
 
@@ -15,10 +16,14 @@ export function registerNotionIpc(): void {
 
   ipcMain.handle('notion:connect', () => connectNotion())
 
-  ipcMain.handle('notion:disconnect', () => {
+  ipcMain.handle('notion:disconnect', async () => {
     disconnectNotion()
+    await backend.clearNotion()
     return { ok: true }
   })
+
+  // Mirrors the signed-in account's Notion connection from the backend into the local cache.
+  ipcMain.handle('notion:sync', () => backend.syncNotion())
 
   ipcMain.handle('notion:testConnection', async () => {
     const token = store.getNotionToken()

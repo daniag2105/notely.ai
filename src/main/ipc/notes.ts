@@ -1,47 +1,40 @@
 import { ipcMain, IpcMainInvokeEvent } from 'electron'
-import * as store from '../services/store'
-import {
-  buildBaseSystemPrompt,
-  buildTaskInstruction,
-  generateNotes,
-  parseOutput,
-  ContentBlock,
-  GenerateOptions,
-  GenerateConfig
-} from '../services/llm'
+import * as backend from '../services/backend'
 
+// Generation is now a metered, server-side call: the renderer's payload is forwarded to the Notely
+// backend (which holds the operator's Anthropic key and enforces the free / Pro / Jots limits), and
+// streamed progress is relayed back over the same 'notes:generate:progress' channel the renderer
+// already listens on — so the generation UI is unchanged. A paywall or missing session comes back as
+// a structured result the renderer can act on, rather than a thrown generic error.
 interface GenerateRequest {
   requestId: string
   unit: string
   topic: string
-  options: GenerateOptions
-  sourceBlocks: ContentBlock[]
-  hasFigures?: boolean
-}
-
-function resolveGenerateConfig(): GenerateConfig {
-  const apiKey = store.getAnthropicKey()
-  if (!apiKey) {
-    throw new Error('No Anthropic API key set. Open Settings and add your key to generate notes.')
+  options: {
+    depth: 'concise' | 'standard' | 'detailed'
+    mode: 'notes' | 'math' | 'examples'
+    custom: string
   }
-  return { provider: 'anthropic', apiKey, modelId: store.getAnthropicModelId() }
+  sourceBlocks: backend.SourceBlock[]
+  hasFigures?: boolean
+  isBatch?: boolean
 }
 
 export function registerNotesIpc(): void {
   ipcMain.handle('notes:generate', async (event: IpcMainInvokeEvent, payload: GenerateRequest) => {
-    const { requestId, unit, topic, options, sourceBlocks, hasFigures } = payload
-    // The decrypted key (if any) lives only in this function's local scope for the duration
-    // of the request — never logged, never sent back over IPC to the renderer.
-    const config = resolveGenerateConfig()
-    const { raw, verified } = await generateNotes(
-      config,
-      sourceBlocks,
-      buildBaseSystemPrompt(),
-      buildTaskInstruction(unit, topic, options, hasFigures),
-      (fullText) => {
-        event.sender.send('notes:generate:progress', { requestId, text: fullText })
-      }
-    )
-    return { ...parseOutput(raw, topic), verified }
+    const { requestId, unit, topic, options, sourceBlocks, hasFigures, isBatch } = payload
+    try {
+      const result = await backend.generate(
+        { unit, topic, options, sourceBlocks, hasFigures: !!hasFigures, isBatch: !!isBatch },
+        (fullText) => {
+          event.sender.send('notes:generate:progress', { requestId, text: fullText })
+        }
+      )
+      return result
+    } catch (e) {
+      if (e instanceof backend.PaywallError) return { paywall: e.paywall }
+      if (e instanceof backend.AuthRequiredError) return { authRequired: true, error: e.message }
+      throw e
+    }
   })
 }
