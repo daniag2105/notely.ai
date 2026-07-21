@@ -1,8 +1,7 @@
 @echo off
 REM Notely.ai - double-click setup for Windows.
 REM Just double-click this file. It installs everything, builds the app, and opens the folder with
-REM the installer. You never have to type a command. Your keys are entered later, inside the app -
-REM this script never touches them.
+REM the installer. You never have to type a command. You sign in later, inside the app.
 
 REM Run from this file's own folder, no matter where it's launched from.
 cd /d "%~dp0"
@@ -44,8 +43,8 @@ start "" "dist"
 echo.
 echo   Next steps:
 echo     1. Run the installer in the dist folder (if Windows warns, click "More info" then "Run anyway").
-echo     2. Open Notely.ai, click Settings, and paste your Anthropic API key (console.anthropic.com).
-echo     3. Optionally add your Notion integration token to enable "Send to Notion".
+echo     2. Open Notely.ai and click "Create an account" - your first 5 notes are free. No API key needed.
+echo     3. Optionally, in Settings, click "Connect Notion" to enable "Send to Notion".
 echo.
 pause
 exit /b 0

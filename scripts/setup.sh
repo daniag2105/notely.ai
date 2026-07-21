@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
 # Notely.ai — one-command setup.
-# Installs dependencies and builds the Mac app. After this finishes, open the app and paste
-# your two keys (Anthropic + Notion) in Settings — this script never touches your keys.
+# Installs dependencies and builds the Mac app. After this finishes, open the app and create a
+# free account — notes are generated on Notely.ai's servers, so there's no API key to enter.
 #
 set -euo pipefail
 
@@ -47,6 +47,6 @@ echo "  Next steps:"
 echo "    1. Open the .dmg in the dist folder and drag Notely.ai to Applications."
 echo "    2. Launch it (first time: right-click ▸ Open to get past the 'unidentified"
 echo "       developer' warning — it's unsigned because you built it yourself)."
-echo "    3. Click Settings and paste your Anthropic API key (console.anthropic.com)."
-echo "    4. Optionally add your Notion integration token to enable 'Send to Notion'."
+echo "    3. Click 'Create an account' — your first 5 notes are free. No API key needed."
+echo "    4. Optionally, in Settings, click 'Connect Notion' to enable 'Send to Notion'."
 echo ""

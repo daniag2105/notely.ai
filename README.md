@@ -1,34 +1,37 @@
 # Notely.ai
 
 Turn lecture slides + a transcript into clean, **Notion-ready notes** — routed straight to the
-right unit and topic page. Notely.ai is a Mac app: you drop a slide deck and paste the transcript,
-Claude writes structured study notes, and (optionally) files them into your Notion workspace.
+right unit and topic page. Drop a slide deck, paste the transcript, and Claude writes structured
+study notes you can send into your Notion workspace.
 
-Notely.ai uses **Claude** to write the notes. You bring your own Anthropic API key — it's stored
-encrypted on your Mac (macOS Keychain) and only ever used to call Anthropic directly.
+**No API key needed.** Notes are generated on Notely.ai's servers. You just make a free account in
+the app — your first **5 notes are free**, then you can upgrade to Pro or top up with Jots.
+
+> 📖 **New here?** Read **[HOW-TO-USE.md](HOW-TO-USE.md)** — a plain-English, step-by-step guide to
+> using the app.
 
 ---
 
 ## What you'll need
 
 - **macOS**
-- **Node.js** (LTS) — install from [nodejs.org](https://nodejs.org) if you don't have it
-- **An Anthropic API key** — from [console.anthropic.com](https://console.anthropic.com) (billed
-  by Anthropic per usage; you control the spend)
-- **A Notion account** *(optional)* — to file notes into Notion; you link it in-app with one click,
-  no token to copy
+- **Node.js (LTS)** — only needed to *build* the app. Install from [nodejs.org](https://nodejs.org)
+  if you don't have it. *(Once a ready-made installer is published, you won't need this.)*
+- **A Notely.ai account** — you make it inside the app in a few seconds (email + password). Free.
+- **A Notion account** *(optional)* — only if you want to send notes into Notion. You link it with
+  one click, no token to copy.
 
 ## Install
 
 > **On Windows?** Follow **[README-windows.md](README-windows.md)** instead.
 
 ### Easiest — no commands
-1. Install **Node.js** (LTS) from [nodejs.org](https://nodejs.org) if you don't have it.
+1. Install **Node.js (LTS)** from [nodejs.org](https://nodejs.org) if you don't have it.
 2. On the [repo page](https://github.com/daniag2105/notely.ai), click the green **Code** button →
    **Download ZIP**, then unzip it.
-3. Open the unzipped folder and **double-click `setup.command`**. It installs everything, builds
-   the app, and opens the installer for you — just wait for it to finish, then drag **Notely.ai**
-   into Applications.
+3. Open the unzipped folder and **double-click `setup.command`**. It installs everything and builds
+   the app, then opens the installer — wait for it to finish, then drag **Notely.ai** into
+   Applications.
 
 > First time you double-click `setup.command`, macOS may say it "can't be opened." Right-click it ▸
 > **Open** ▸ **Open** once, and it'll run.
@@ -39,61 +42,63 @@ git clone https://github.com/daniag2105/notely.ai.git
 cd notely.ai
 npm run setup
 ```
-`npm run setup` installs everything and builds the app; then open the `.dmg` in the `dist/` folder
-and drag **Notely.ai** into Applications.
+`npm run setup` installs everything and builds the app; then open the `.dmg` in `dist/` and drag
+**Notely.ai** into Applications.
 
 > First launch: because the app is unsigned (you built it yourself), macOS shows an "unidentified
 > developer" warning. Right-click the app ▸ **Open** once to get past it.
 
 ## First use
 
-1. Open Notely.ai and click **Settings**.
-2. Paste your **Anthropic API key** (`sk-ant-…`). That's all you need to start generating.
-3. *(Optional)* Click **Connect Notion** to link your workspace and enable "Send to Notion" — see
-   below.
-4. Close Settings, pick a **unit** and **topic**, drop your slides + transcript, and hit
-   **Generate**.
+1. Open Notely.ai. A sign-in box appears — click **Create an account**, enter an email + password
+   (8+ characters). Your first **5 notes are free**.
+2. *(Optional)* Open **Settings ▸ Connect Notion** to link your workspace and turn on "Send to
+   Notion".
+3. Pick a **unit**, type a **topic**, add your slides + transcript, and hit **Generate**.
 
-## Getting set up
+👉 Full walkthrough: **[HOW-TO-USE.md](HOW-TO-USE.md)**.
 
-### Anthropic API key (required)
-1. Go to [console.anthropic.com](https://console.anthropic.com) → **API Keys** → create a key.
-2. Copy it and paste it into Notely.ai's Settings. It's stored encrypted locally and only ever
-   sent to Anthropic's API over HTTPS.
+## Sending notes to Notion (optional)
 
-### Connecting Notion (optional — for "Send to Notion")
-In Settings, click **Connect Notion**. Your browser opens, you choose which pages Notely.ai may
-write to — right inside Notion's own picker — and you're done. No token to copy, and no hunting
-through the ••• → Connections menu to share pages one by one.
+Open **Settings ▸ Connect Notion**. Your browser opens, you tick which pages Notely.ai may write to —
+in Notion's own screen — and you're done. No token to copy, no sharing pages one by one.
+
+**This already works in the official build** — the one-time Notion login backend is deployed and
+wired in, so there's nothing for you to set up. *(The [`server/notion-oauth`](server/notion-oauth)
+folder is only relevant if you fork the project and want your **own** Notion integration.)*
 
 Prefer to do it by hand? Click **"paste a token instead"** in Settings and use an internal
-integration token from [notion.so/my-integrations](https://www.notion.so/my-integrations) (then
-share your pages with it via the ••• → **Connections** menu).
+integration token from [notion.so/my-integrations](https://www.notion.so/my-integrations).
 
-> **Maintainer note:** the one-click **Connect Notion** button requires a small OAuth backend to be
-> deployed once — see [`server/notion-oauth/README.md`](server/notion-oauth/README.md). Until that's
-> set up, use the "paste a token instead" option.
+## Running out of free notes
 
-## Everyday use
+Your first 5 notes are free. After that, open **Settings** to **upgrade to Pro** (unlimited) or buy
+**Jots** (pay-as-you-go top-ups). A few extras — batch import, the Opus model, and slide-figure
+extraction — are Pro features.
 
-Slides + transcript → **Generate** → review the notes → **Send to Notion** (or copy the markdown).
-Notes are routed to the unit/topic you selected, creating the pages if needed.
+## Appearance
+
+**Settings ▸ Appearance** lets you switch between **System / Light / Dark**, and drag the **accent
+colour** slider to re-theme the whole app (the pink is just the default).
 
 ## Troubleshooting
 
 - **"unidentified developer"** on launch → right-click the app ▸ **Open** (once).
+- **Can't sign in / "something went wrong"** → check your email + password (8+ characters) and that
+  you're online.
+- **"You've used all 5 free notes"** → upgrade to Pro or add Jots in **Settings**.
 - **Notion says it can't find / write the page** → make sure that page (or one of its parents) was
-  selected when you clicked **Connect Notion**. You can re-run Connect and pick more pages.
-- **Generation errors about the API key** → confirm the key is pasted in Settings and still active
-  in the Anthropic console.
+  ticked when you clicked **Connect Notion**. You can re-run Connect and add more pages.
 
 ## Developing
 
 ```bash
 npm install        # install dependencies
-npm run dev        # run the app in development
+npm run dev        # run the app in development (signs in against a local backend on :3000)
 npm run build:mac  # build the macOS app + .dmg into dist/
 npm run typecheck  # type-check main + renderer
 ```
 
-Built with Electron + React + TypeScript.
+Built with Electron + React + TypeScript. The app talks to two backends that are **already deployed**
+(one-time operator infrastructure, not built by `setup.command`): the Notely.ai backend for accounts
++ note generation, and a tiny Notion-login worker ([`server/notion-oauth`](server/notion-oauth)).
