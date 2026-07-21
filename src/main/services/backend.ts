@@ -1,4 +1,3 @@
-import { upload } from '@vercel/blob/client'
 import { BACKEND_BASE_URL } from '../config'
 import * as store from './store'
 
@@ -222,6 +221,9 @@ async function uploadImage(dataB64: string, mediaType: string): Promise<string> 
   const ext = (mediaType.split('/')[1] || 'png').replace('+xml', '')
   const filename = `slides/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
   const blob = new Blob([Buffer.from(dataB64, 'base64')], { type: mediaType })
+  // Lazy-loaded so @vercel/blob only runs when an image is actually uploaded — never at app
+  // startup, so nothing in its module init can ever block the app from opening.
+  const { upload } = await import('@vercel/blob/client')
   const result = await upload(filename, blob, {
     access: 'public',
     handleUploadUrl: `${BACKEND_BASE_URL}/api/app/blob-upload`,

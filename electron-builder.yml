@@ -1,5 +1,8 @@
 appId: com.sahil.notely
 productName: Notely.ai
+# Ad-hoc signs the packaged app so it launches on Apple Silicon (electron-builder skips signing when
+# identity is null, which leaves a broken signature macOS kills on launch). See build/afterPack.js.
+afterPack: build/afterPack.js
 directories:
   buildResources: build
 files:
@@ -27,14 +30,10 @@ mac:
     - NSDocumentsFolderUsageDescription: Notely.ai reads lecture slide files you choose from Documents.
     - NSDownloadsFolderUsageDescription: Notely.ai saves generated .md notes to Downloads.
   notarize: false
-electronFuses:
-  runAsNode: false
-  enableCookieEncryption: false
-  enableNodeOptionsEnvironmentVariable: false
-  enableNodeCliInspectArguments: false
-  enableEmbeddedAsarIntegrityValidation: false
-  onlyLoadAppFromAsar: false
-  loadBrowserProcessSpecificV8Snapshot: false
+# NOTE: the electronFuses block was removed. Flipping fuses rewrites the Electron binary after it's
+# signed, which invalidates the (ad-hoc, unsigned) signature and makes macOS SIGKILL the app on
+# launch with "Code Signature Invalid" (crashes in electron::fuses::IsRunAsNodeEnabled). It can be
+# re-added later once the app is properly signed with an Apple Developer ID + notarized.
 dmg:
   artifactName: ${name}-${version}.${ext}
 linux:

@@ -1,5 +1,3 @@
-import { is } from '@electron-toolkit/utils'
-
 // Public, non-secret configuration for the "Connect Notion" OAuth flow.
 //
 // These two values are safe to commit and to ship inside the app — they are NOT secrets. The
@@ -25,10 +23,13 @@ export function isNotionOAuthConfigured(): boolean {
 // ~/notely-web project). The app signs in against it and generates through it (it holds the
 // operator's Anthropic key and enforces the free/Pro/Jots limits).
 //
-// Dev (`npm run dev`) → the local Next.js server. A packaged/distributed build → production.
-// This is the project's stable Vercel production alias (team notelyai / project notely.ai) — it
-// always points at the latest production deploy. If you later add a custom domain (e.g. notely.ai),
-// change this one line and rebuild the app. Override either at launch with NOTELY_BACKEND_URL.
+// Dev (`npm run dev`, which sets ELECTRON_RENDERER_URL) → the local Next.js server; a
+// packaged/distributed build → production. This is the project's stable Vercel production alias
+// (team notelyai / project notely.ai) — it always points at the latest production deploy. If you
+// later add a custom domain (e.g. notely.ai), change this one line and rebuild. Override either at
+// launch with NOTELY_BACKEND_URL. (Detect dev via the env var electron-vite sets — NOT
+// electron.app.isPackaged, which isn't available this early in the module graph.)
 const PROD_BACKEND_URL = 'https://notelyai-pearl.vercel.app'
+const isDev = !!process.env.ELECTRON_RENDERER_URL
 export const BACKEND_BASE_URL =
-  process.env.NOTELY_BACKEND_URL || (is.dev ? 'http://localhost:3000' : PROD_BACKEND_URL)
+  process.env.NOTELY_BACKEND_URL || (isDev ? 'http://localhost:3000' : PROD_BACKEND_URL)
