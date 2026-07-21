@@ -17,9 +17,12 @@ import {
   ExternalLink,
   Send,
   LogIn,
-  Lock
+  Lock,
+  Sun,
+  Moon
 } from 'lucide-react'
 import { T } from './theme'
+import { useThemeMode } from './lib/theme-mode'
 import { mdToHtml } from './lib/mdToHtml'
 import { pdfToImages, extractSlideFigures, SlideFigure } from './lib/pdf'
 import { publishToNotion, PublishFigure } from './lib/notionPublish'
@@ -388,6 +391,7 @@ export default function App(): React.JSX.Element {
 
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [batchOpen, setBatchOpen] = useState(false)
+  const { resolved: theme, setMode: setTheme } = useThemeMode()
   const [picker, setPicker] = useState<PickerState | null>(null)
   const [notionBusy, setNotionBusy] = useState(false)
   const [notionError, setNotionError] = useState('')
@@ -600,7 +604,7 @@ export default function App(): React.JSX.Element {
         .prev blockquote{ border-left: 3px solid ${T.amber}; background:${T.panelHi}; margin: 8px 0; padding: 8px 12px; border-radius: 0 8px 8px 0; font-size: 14px; }
         .prev hr{ border: none; border-top: 1px solid ${T.line}; margin: 16px 0; }
         .prev code.ic{ background:${T.panelHi}; padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
-        .prev pre.cb{ background:#140f11; border:1px solid ${T.line}; padding: 12px; border-radius: 8px; overflow:auto; font-size: 12.5px; }
+        .prev pre.cb{ background:${T.codeBg}; border:1px solid ${T.line}; padding: 12px; border-radius: 8px; overflow:auto; font-size: 12.5px; }
         .prev .eq{ background:${T.blueBg}; color:${T.text}; padding: 1px 6px; border-radius: 4px; font-family: ui-monospace, monospace; font-size: 12.5px; }
         .prev table.tb{ border-collapse: collapse; margin: 10px 0; width: 100%; font-size: 13px; }
         .prev table.tb th, .prev table.tb td{ border: 1px solid ${T.line}; padding: 6px 10px; text-align: left; }
@@ -664,6 +668,24 @@ export default function App(): React.JSX.Element {
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              aria-label="Toggle light and dark mode"
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 9,
+                border: `1px solid ${T.lineSoft}`,
+                background: T.panel,
+                color: T.dim,
+                cursor: 'pointer',
+                display: 'grid',
+                placeItems: 'center'
+              }}
+            >
+              {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
+            </button>
             {account && (
               <button
                 onClick={() => setSettingsOpen(true)}
@@ -1126,6 +1148,7 @@ export default function App(): React.JSX.Element {
                           height: 15,
                           borderRadius: '50%',
                           background: '#fff',
+                          boxShadow: '0 1px 2px rgba(0,0,0,0.28)',
                           transform: val ? 'translateX(15px)' : 'none',
                           transition: 'transform .15s'
                         }}
@@ -1337,7 +1360,7 @@ export default function App(): React.JSX.Element {
                     margin: 0,
                     padding: 12,
                     borderRadius: 9,
-                    background: '#140f11',
+                    background: T.codeBg,
                     border: `1px solid ${T.lineSoft}`,
                     color: T.dim,
                     fontSize: 12,

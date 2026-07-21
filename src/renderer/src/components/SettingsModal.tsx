@@ -9,10 +9,24 @@ import {
   Lock,
   Sparkles,
   LogOut,
-  User
+  User,
+  Palette,
+  Sun,
+  Moon,
+  Monitor
 } from 'lucide-react'
 import { T } from '../theme'
+import { useThemeMode, useAccentHue, type ThemeMode } from '../lib/theme-mode'
 import type { AccountSummary } from '../App'
+
+const THEME_OPTIONS: { id: ThemeMode; label: string; Icon: typeof Sun }[] = [
+  { id: 'system', label: 'System', Icon: Monitor },
+  { id: 'light', label: 'Light', Icon: Sun },
+  { id: 'dark', label: 'Dark', Icon: Moon }
+]
+
+// Quick-pick accent hues (OKLCH degrees) shown as dots under the slider. 6° ≈ the default rose.
+const ACCENT_PRESETS = [6, 25, 55, 90, 150, 190, 240, 275, 320]
 
 interface Props {
   open: boolean
@@ -144,6 +158,8 @@ export default function SettingsModal({
   onSignOut,
   onUpgrade
 }: Props): React.JSX.Element | null {
+  const { mode: themeMode, setMode: setThemeMode } = useThemeMode()
+  const { hue: accentHue, setHue: setAccentHue } = useAccentHue()
   const [notionTokenSet, setNotionTokenSet] = useState(false)
   const [notionWorkspaceName, setNotionWorkspaceName] = useState('')
   const [anthropicModelId, setAnthropicModelId] = useState('')
@@ -408,6 +424,105 @@ export default function SettingsModal({
               Notes are generated on Notely.ai&rsquo;s servers — no API key needed.
               {!isPro ? ' Opus is a Pro model.' : ''}
             </p>
+          </div>
+
+          <div style={{ height: 1, background: T.lineSoft }} />
+
+          {/* ---- Appearance ---- */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <Palette size={15} color={T.blue} />
+              <label style={{ fontSize: 13, fontWeight: 600, color: T.text }}>Appearance</label>
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                gap: 5,
+                background: T.panelHi,
+                padding: 3,
+                borderRadius: 9,
+                border: `1px solid ${T.lineSoft}`
+              }}
+            >
+              {THEME_OPTIONS.map(({ id, label, Icon }) => (
+                <button
+                  key={id}
+                  onClick={() => setThemeMode(id)}
+                  style={{
+                    flex: 1,
+                    padding: '6px',
+                    borderRadius: 6,
+                    fontSize: 12,
+                    cursor: 'pointer',
+                    border: 'none',
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 5,
+                    background: themeMode === id ? T.blue : 'transparent',
+                    color: themeMode === id ? '#fff' : T.dim
+                  }}
+                >
+                  <Icon size={13} /> {label}
+                </button>
+              ))}
+            </div>
+
+            {/* accent colour */}
+            <div style={{ marginTop: 14 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: 8
+                }}
+              >
+                <span style={{ fontSize: 12, color: T.dim }}>Accent colour</span>
+                <span
+                  style={{
+                    width: 16,
+                    height: 16,
+                    borderRadius: '50%',
+                    background: T.blue,
+                    border: `1px solid ${T.lineSoft}`
+                  }}
+                />
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={360}
+                value={accentHue}
+                onChange={(e) => setAccentHue(Number(e.target.value))}
+                className="accent-hue"
+                aria-label="Accent colour hue"
+              />
+              <div style={{ display: 'flex', gap: 7, marginTop: 10 }}>
+                {ACCENT_PRESETS.map((h) => (
+                  <button
+                    key={h}
+                    onClick={() => setAccentHue(h)}
+                    aria-label={`Accent hue ${h}`}
+                    style={{
+                      width: 20,
+                      height: 20,
+                      borderRadius: '50%',
+                      cursor: 'pointer',
+                      padding: 0,
+                      background: `oklch(0.62 0.17 ${h})`,
+                      border: accentHue === h ? `2px solid ${T.text}` : `1px solid ${T.lineSoft}`
+                    }}
+                  />
+                ))}
+              </div>
+              <p style={{ fontSize: 11, color: T.faint, margin: '9px 0 0', lineHeight: 1.5 }}>
+                Recolours buttons, links and highlights. Slides &amp; transcript keep their own
+                colours.
+              </p>
+            </div>
           </div>
 
           <div style={{ height: 1, background: T.lineSoft }} />

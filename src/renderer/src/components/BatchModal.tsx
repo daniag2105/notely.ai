@@ -587,7 +587,7 @@ export default function BatchModal({
                     borderRadius: 8,
                     border: 'none',
                     background: readyCount === 0 ? T.panelHi : T.teal,
-                    color: readyCount === 0 ? T.faint : '#1c1417',
+                    color: readyCount === 0 ? T.faint : T.tealOn,
                     cursor: readyCount === 0 ? 'default' : 'pointer',
                     display: 'flex',
                     alignItems: 'center',

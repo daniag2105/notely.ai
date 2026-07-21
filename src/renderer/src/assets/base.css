@@ -1,5 +1,70 @@
+/*
+ * Notely palette. The dark "dusty rose" theme is the default (:root), preserving the app's original
+ * look before JS runs and as the fallback. lib/theme-mode.ts stamps data-theme="light" | "dark" on
+ * <html> (from the stored preference / OS setting) to switch. Keys here mirror the tokens in theme.ts.
+ */
 :root {
   color-scheme: dark;
+
+  /* User-chosen accent hue (OKLCH degrees), set from Settings via lib/theme-mode.ts. Default ≈ the
+   * original rose. Only the primary accent (--blue) tracks this; the functional colors below stay
+   * fixed so the slides/transcript (teal/amber) and other semantic chips never shift with it. Using
+   * OKLCH at a fixed lightness/chroma keeps white-on-accent contrast steady across every hue. */
+  --accent-h: 6;
+
+  /* Neutrals carry the same faint tint they always had, but follow the accent hue (only the hue
+   * rotates — lightness/chroma are the originals, so contrast is unchanged at every hue). */
+  --bg: oklch(0.203 0.014 var(--accent-h));
+  --panel: oklch(0.232 0.017 var(--accent-h));
+  --panelHi: oklch(0.257 0.022 var(--accent-h));
+  --line: oklch(0.301 0.03 var(--accent-h));
+  --lineSoft: oklch(0.277 0.026 var(--accent-h));
+  --text: oklch(0.927 0.01 var(--accent-h));
+  --dim: oklch(0.716 0.038 var(--accent-h));
+  --faint: oklch(0.528 0.035 var(--accent-h));
+
+  --blue: oklch(0.72 0.1 var(--accent-h));
+  --blueBg: oklch(0.72 0.1 var(--accent-h) / 0.16);
+  --teal: #5ce1c9;
+  --tealBg: rgba(92, 225, 201, 0.12);
+  --amber: #ffb454;
+  --amberBg: rgba(255, 180, 84, 0.12);
+  --purple: #c792ea;
+  --purpleBg: rgba(199, 146, 234, 0.12);
+  --danger: #e07a6b;
+
+  --codeBg: oklch(0.176 0.009 var(--accent-h));
+  --tealOn: #1c1417;
+}
+
+/* Light "dusty rose": warm rose-tinted paper, white cards, deep-plum text, and deepened accents so
+ * they keep enough contrast against white (both as text and as white-on-accent button fills). */
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  /* Same faint tint as before, re-hued by the accent. Cards (--panel) were pure white and stay
+   * white; the page background, raised surfaces, borders and text carry the tint. */
+  --bg: oklch(0.959 0.009 var(--accent-h));
+  --panel: #ffffff;
+  --panelHi: oklch(0.943 0.016 var(--accent-h));
+  --line: oklch(0.903 0.02 var(--accent-h));
+  --lineSoft: oklch(0.93 0.015 var(--accent-h));
+  --text: oklch(0.256 0.021 var(--accent-h));
+  --dim: oklch(0.491 0.03 var(--accent-h));
+  --faint: oklch(0.63 0.03 var(--accent-h));
+
+  --blue: oklch(0.57 0.145 var(--accent-h));
+  --blueBg: oklch(0.57 0.145 var(--accent-h) / 0.13);
+  --teal: #0b8270;
+  --tealBg: rgba(11, 130, 112, 0.12);
+  --amber: #a76a10;
+  --amberBg: rgba(167, 106, 16, 0.13);
+  --purple: #8a4fc4;
+  --purpleBg: rgba(138, 79, 196, 0.12);
+  --danger: #c33c2a;
+
+  --codeBg: oklch(0.947 0.01 var(--accent-h));
+  --tealOn: #ffffff;
 }
 
 *,
@@ -16,6 +81,8 @@ body,
 }
 
 body {
+  background: var(--bg);
+  color: var(--text);
   font-family:
     -apple-system,
     BlinkMacSystemFont,
@@ -27,4 +94,45 @@ body {
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Accent-colour hue slider (Settings → Appearance). The track is a full OKLCH hue sweep so the bar
+ * shows the actual accent hues; the thumb is filled with the live accent (var(--blue)). */
+input.accent-hue {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 14px;
+  border-radius: 8px;
+  outline: none;
+  cursor: pointer;
+  border: 1px solid var(--lineSoft);
+  background: linear-gradient(
+    to right,
+    oklch(0.68 0.16 0),
+    oklch(0.68 0.16 40),
+    oklch(0.68 0.16 80),
+    oklch(0.68 0.16 120),
+    oklch(0.68 0.16 160),
+    oklch(0.68 0.16 200),
+    oklch(0.68 0.16 240),
+    oklch(0.68 0.16 280),
+    oklch(0.68 0.16 320),
+    oklch(0.68 0.16 360)
+  );
+}
+
+input.accent-hue::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--blue);
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+}
+
+input.accent-hue:focus-visible {
+  box-shadow: 0 0 0 2px var(--blue);
 }
