@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Lecture slides + transcript → Notion-ready notes, sent straight to the right unit and topic page.",
   "main": "./out/main/index.js",
-  "author": "Sahil",
+  "author": "Dania Garman",
   "scripts": {
     "setup": "bash scripts/setup.sh",
     "format": "prettier --write .",

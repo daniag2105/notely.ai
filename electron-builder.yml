@@ -1,5 +1,6 @@
 appId: com.sahil.notely
 productName: Notely.ai
+copyright: Copyright © 2026 Dania Garman
 # Ad-hoc signs the packaged app so it launches on Apple Silicon (electron-builder skips signing when
 # identity is null, which leaves a broken signature macOS kills on launch). See build/afterPack.js.
 afterPack: build/afterPack.js
