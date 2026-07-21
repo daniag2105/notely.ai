@@ -1,0 +1,54 @@
+name: Release
+
+# Builds the Mac (.dmg) and Windows (.exe) installers on their native runners and attaches them to a
+# GitHub Release. Trigger by pushing a version tag:
+#   npm version patch   # bumps package.json + creates the tag
+#   git push --follow-tags
+#
+# The release is created as a DRAFT so you can review it, add the unsigned-install notes (macOS:
+# right-click → Open; Windows: More info → Run anyway), and publish when ready.
+#
+# NOTE: these builds are UNSIGNED (electron-builder.yml has identity: null / notarize: false). That's
+# fine for a beta. To remove the OS warnings later, add Apple Developer ID signing + a Windows cert
+# (build-config only) and store the credentials as repo secrets.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            script: build:mac
+            artifacts: |
+              dist/*.dmg
+              dist/*.dmg.blockmap
+          - os: windows-latest
+            script: build:win
+            artifacts: |
+              dist/*-setup.exe
+              dist/*-setup.exe.blockmap
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # No GH token here on purpose — electron-builder should only package, not auto-publish; the
+      # upload below (with the default GITHUB_TOKEN) attaches the artifacts to the release.
+      - run: npm run ${{ matrix.script }}
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          fail_on_unmatched_files: false
+          files: ${{ matrix.artifacts }}
