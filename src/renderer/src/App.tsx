@@ -146,6 +146,23 @@ function Chip({
   )
 }
 
+// True if a dropped file is allowed by an <input accept="…"> string — handles extensions (".pdf"),
+// wildcards ("image/*"), and exact MIME types. Empty accept means anything goes.
+function matchesAccept(file: File, accept: string): boolean {
+  const parts = accept
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+  if (parts.length === 0) return true
+  const name = file.name.toLowerCase()
+  const type = file.type.toLowerCase()
+  return parts.some((p) => {
+    if (p.startsWith('.')) return name.endsWith(p)
+    if (p.endsWith('/*')) return type.startsWith(p.slice(0, -1))
+    return type === p
+  })
+}
+
 function SourceInput({
   title,
   accept,
@@ -172,8 +189,53 @@ function SourceInput({
   color: string
 }): React.JSX.Element {
   const inputRef = useRef<HTMLInputElement>(null)
+  const [dragOver, setDragOver] = useState(false)
+  // Depth counter so dragging over child elements (the button / textarea) doesn't flicker the ring.
+  const dragDepth = useRef(0)
+
+  const onDragEnter = (e: React.DragEvent): void => {
+    e.preventDefault()
+    dragDepth.current += 1
+    setDragOver(true)
+  }
+  const onDragOver = (e: React.DragEvent): void => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
+  }
+  const onDragLeave = (): void => {
+    dragDepth.current -= 1
+    if (dragDepth.current <= 0) {
+      dragDepth.current = 0
+      setDragOver(false)
+    }
+  }
+  // A dropped file always resolves to the upload slot (a PDF/image can't go in the paste box), so
+  // switch to upload mode and load it — this is what makes drop work "no matter which mode you're in".
+  const onDrop = (e: React.DragEvent): void => {
+    e.preventDefault()
+    dragDepth.current = 0
+    setDragOver(false)
+    const f = e.dataTransfer.files?.[0]
+    if (f && matchesAccept(f, accept)) {
+      setMode('upload')
+      setFile(f)
+    }
+  }
+
   return (
-    <div>
+    <div
+      onDragEnter={onDragEnter}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      style={{
+        borderRadius: 10,
+        outline: dragOver ? `2px dashed ${color}` : '2px dashed transparent',
+        outlineOffset: 3,
+        background: dragOver ? `color-mix(in srgb, ${color} 8%, transparent)` : 'transparent',
+        transition: 'background .12s ease, outline-color .12s ease'
+      }}
+    >
       <div
         style={{
           display: 'flex',
@@ -392,6 +454,18 @@ export default function App(): React.JSX.Element {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [batchOpen, setBatchOpen] = useState(false)
   const { resolved: theme, setMode: setTheme } = useThemeMode()
+
+  // Swallow drops that land outside a drop zone — otherwise Electron navigates the whole window to
+  // the dropped file's file:// URL. The SourceInput drop zones handle (and preventDefault) their own.
+  useEffect(() => {
+    const prevent = (e: Event): void => e.preventDefault()
+    window.addEventListener('dragover', prevent)
+    window.addEventListener('drop', prevent)
+    return () => {
+      window.removeEventListener('dragover', prevent)
+      window.removeEventListener('drop', prevent)
+    }
+  }, [])
   const [picker, setPicker] = useState<PickerState | null>(null)
   const [notionBusy, setNotionBusy] = useState(false)
   const [notionError, setNotionError] = useState('')
